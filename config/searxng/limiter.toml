@@ -1,0 +1,9 @@
+[botdetection.ip_limit]
+link_token = false
+
+[botdetection.ip_lists]
+pass_ip = [
+  "127.0.0.0/8",
+  "172.16.0.0/12",
+]
+

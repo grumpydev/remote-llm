@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+
+usage() {
+	printf 'Usage: sudo scripts/update (--check | --apply)\n'
+}
+[[ $# -eq 1 ]] || {
+	usage
+	exit 2
+}
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+	usage
+	exit 0
+fi
+require_root
+case "$1" in
+--check)
+	diff -u "${DEPLOY_DIR}/versions.env" "${REPO_ROOT}/versions.env" || true
+	compose pull --dry-run 2>/dev/null || log "Docker Compose does not support pull --dry-run; compare versions.env above."
+	;;
+--apply)
+	backup="$("${SCRIPT_DIR}/backup" --config-only)"
+	if ! "${REPO_ROOT}/scripts/install"; then
+		"${SCRIPT_DIR}/restore" "${backup}" --config-only
+		die "update failed; prior deployment restored"
+	fi
+	log "Update validated. Rollback backup: ${backup}"
+	;;
+*) die "choose --check or --apply" ;;
+esac

@@ -1,0 +1,58 @@
+x-worker: &worker
+  profiles: ["worker"]
+  platform: linux/amd64
+  build:
+    context: ./docker/opencode-worker
+    args:
+      NODE_IMAGE: ${NODE_IMAGE}
+      OPENCODE_VERSION: ${OPENCODE_VERSION}
+  image: ai-appliance/opencode-worker:${OPENCODE_VERSION}
+  init: true
+  user: "1000:1000"
+  group_add:
+    - "${AI_APPLIANCE_GID}"
+  working_dir: /workspace
+  environment:
+    LITELLM_BASE_URL: http://litellm:4000/v1
+    LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+    OPENCODE_DISABLE_AUTOUPDATE: "true"
+    OPENCODE_DISABLE_DEFAULT_PLUGINS: "true"
+    OPENCODE_DISABLE_LSP_DOWNLOAD: "true"
+    OPENCODE_AUTO_SHARE: "false"
+    XDG_CACHE_HOME: /cache/xdg
+    npm_config_cache: /cache/npm
+    GIT_TERMINAL_PROMPT: "0"
+  volumes:
+    - ${AI_JOBS_ROOT:-/srv/ai-jobs}/shared-cache:/cache:rw
+    - ${AI_SECRETS_DIR:-/etc/ai-appliance}/known_hosts:/run/secrets/known_hosts:ro
+    - ${AI_SECRETS_DIR:-/etc/ai-appliance}/git_deploy_key:/run/secrets/git_deploy_key:ro
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=1g
+    - /home/node:rw,nosuid,size=128m,uid=1000,gid=1000
+  pids_limit: 2048
+  mem_limit: ${JOB_MEMORY_LIMIT:-24g}
+  cpus: ${JOB_CPU_LIMIT:-12}
+  logging:
+    driver: json-file
+    options:
+      max-size: "20m"
+      max-file: "2"
+  depends_on:
+    litellm:
+      condition: service_healthy
+
+services:
+  opencode-worker:
+    <<: *worker
+    networks:
+      - internal
+
+  opencode-worker-offline:
+    <<: *worker
+    networks:
+      - worker-isolated

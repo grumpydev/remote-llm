@@ -1,0 +1,11 @@
+[
+  {
+    "alias": "glm-4.7-flash",
+    "provider_model": "openai/glm-4.7-flash",
+    "api_base": "http://host.docker.internal:8080/v1",
+    "api_key_env": "LLAMA_API_KEY",
+    "timeout": 900,
+    "max_retries": 1
+  }
+]
+

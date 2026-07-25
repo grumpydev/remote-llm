@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""Render non-secret runtime configuration from checked-in templates."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_env(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, sep, value = line.partition("=")
+        if not sep or not re.fullmatch(r"[A-Z][A-Z0-9_]*", key):
+            raise ValueError(f"invalid environment line: {raw!r}")
+        values[key] = value
+    return values
+
+
+def render(source: Path, target: Path, values: dict[str, str]) -> None:
+    text = source.read_text(encoding="utf-8")
+
+    def replace(match: re.Match[str]) -> str:
+        key = match.group(1)
+        if key not in values:
+            raise ValueError(f"missing required setting {key}")
+        value = values[key]
+        if "\n" in value or "\r" in value:
+            raise ValueError(f"newline in setting {key}")
+        return value
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(re.sub(r"\$\{([A-Z][A-Z0-9_]*)\}", replace, text), encoding="utf-8")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--env-file", type=Path, default=ROOT / ".env")
+    parser.add_argument("--output", type=Path, default=ROOT / "runtime")
+    args = parser.parse_args()
+    values = {**os.environ, **load_env(args.env_file)}
+    render(
+        ROOT / "config/searxng/settings.yml.template",
+        args.output / "searxng/settings.yml",
+        values,
+    )
+    (args.output / "searxng").mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ROOT / "config/searxng/limiter.toml", args.output / "searxng/limiter.toml")
+    (args.output / "litellm").mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            str(ROOT / "scripts/model-config"),
+            "--registry",
+            str(ROOT / "config/litellm/models.json"),
+            "--output",
+            str(args.output / "litellm/config.yaml"),
+            "render",
+        ],
+        check=True,
+    )
+    models = json.loads((ROOT / "config/litellm/models.json").read_text(encoding="utf-8"))
+    provider_lines: list[str] = []
+    for model in models:
+        key = model["api_key_env"]
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", key):
+            raise ValueError(f"unsafe provider key name {key!r}")
+        if key not in values or not values[key]:
+            raise ValueError(f"missing provider key value {key}")
+        if "\n" in values[key] or "\r" in values[key]:
+            raise ValueError(f"newline in provider key {key}")
+        provider_lines.append(f"{key}={values[key]}")
+    (args.output / "litellm/provider.env").write_text(
+        "\n".join(dict.fromkeys(provider_lines)) + "\n", encoding="utf-8"
+    )
+    for path in args.output.rglob("*"):
+        if path.is_file():
+            path.chmod(0o600)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

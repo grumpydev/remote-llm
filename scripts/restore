@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+
+usage() {
+	printf 'Usage: sudo scripts/restore BACKUP_DIR [--config-only]\n'
+}
+
+[[ ${1:-} != "-h" && ${1:-} != "--help" ]] || {
+	usage
+	exit 0
+}
+[[ $# -ge 1 ]] || die "backup directory required"
+backup="$1"
+shift
+config_only=false
+[[ ${1:-} != "--config-only" ]] || config_only=true
+require_root
+[[ -d "${backup}" ]] || die "backup not found: ${backup}"
+[[ -f "${backup}/deployment.tar.gz" ]] || die "deployment archive missing"
+
+if [[ -f "${DEPLOY_DIR}/compose.yaml" ]]; then
+	compose down --remove-orphans
+fi
+install -d -m 0755 "$(dirname "${DEPLOY_DIR}")"
+tar -C "$(dirname "${DEPLOY_DIR}")" -xzf "${backup}/deployment.tar.gz"
+
+if ! "${config_only}" && [[ -f "${backup}/open-webui-data.tar.gz" ]]; then
+	volume="$(sed -n 's/^OPEN_WEBUI_VOLUME=//p' "${DEPLOY_DIR}/.env")"
+	docker volume inspect "${volume}" >/dev/null 2>&1 || docker volume create "${volume}" >/dev/null
+	docker run --rm -v "${volume}:/data" -v "${backup}:/backup:ro" \
+		alpine:3.22.1 sh -ec 'find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; tar -C /data -xzf /backup/open-webui-data.tar.gz'
+fi
+worker_compose --profile worker build opencode-worker
+compose up -d
+validate_deployment
+log "Restore validated: ${backup}"

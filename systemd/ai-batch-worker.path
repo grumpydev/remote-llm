@@ -1,0 +1,11 @@
+[Unit]
+Description=Watch the AI appliance filesystem job queue
+
+[Path]
+PathChanged=/srv/ai-jobs/queue
+DirectoryNotEmpty=/srv/ai-jobs/queue
+Unit=ai-batch-worker.service
+
+[Install]
+WantedBy=multi-user.target
+

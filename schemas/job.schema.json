@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.ai-appliance.invalid/schemas/job.schema.json",
+  "title": "AI appliance batch job",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "id", "repository", "task_file", "model", "agent", "execution"],
+  "properties": {
+    "version": {"const": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "base_branch", "work_branch"],
+      "properties": {
+        "url": {"type": "string", "minLength": 1, "maxLength": 512},
+        "base_branch": {"type": "string", "minLength": 1, "maxLength": 128},
+        "work_branch": {"type": "string", "minLength": 1, "maxLength": 128}
+      }
+    },
+    "task_file": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "model": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$"},
+    "agent": {"const": "opencode"},
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_runtime_minutes", "internet_access", "commit_policy", "push"],
+      "properties": {
+        "max_runtime_minutes": {"type": "integer", "minimum": 5, "maximum": 720},
+        "internet_access": {"type": "boolean"},
+        "commit_policy": {"enum": ["never", "always", "tests-pass"]},
+        "push": {"type": "boolean"},
+        "shutdown_on_success": {"type": "boolean", "default": false},
+        "shutdown_on_failure": {"type": "boolean", "default": false},
+        "shutdown_delay_seconds": {"type": "integer", "minimum": 30, "maximum": 3600}
+      }
+    },
+    "checks": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {"type": "string", "minLength": 1, "maxLength": 512}
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$"}
+        }
+      }
+    }
+  }
+}
+

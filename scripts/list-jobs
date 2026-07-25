@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+	printf 'Usage: scripts/list-jobs\n'
+	exit 0
+fi
+[[ $# -eq 0 ]] || die "no arguments expected"
+PYTHONPATH="${DEPLOY_DIR}" AI_JOBS_ROOT="${AI_JOBS_ROOT:-/srv/ai-jobs}" \
+	AI_SECRETS_DIR="${SECRETS_DIR}" AI_APPLIANCE_DIR="${DEPLOY_DIR}" \
+	exec python3 -m ai_appliance.cli list

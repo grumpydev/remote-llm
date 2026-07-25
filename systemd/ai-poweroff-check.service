@@ -1,0 +1,19 @@
+[Unit]
+Description=Honor a safe AI appliance shutdown request
+After=ai-batch-worker.service
+ConditionPathExists=/srv/ai-jobs/shutdown.request
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/opt/ai-appliance/scripts/poweroff-when-idle
+UMask=0027
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/ai-jobs
+LockPersonality=yes
+RestrictRealtime=yes
+

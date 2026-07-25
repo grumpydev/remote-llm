@@ -1,0 +1,29 @@
+use_default_settings: true
+
+general:
+  instance_name: "AI Appliance Search"
+  debug: false
+
+server:
+  bind_address: "0.0.0.0"
+  port: 8080
+  secret_key: "${SEARXNG_SECRET_KEY}"
+  limiter: true
+  image_proxy: false
+
+search:
+  safe_search: 1
+  autocomplete: ""
+  formats:
+    - html
+    - json
+
+ui:
+  static_use_hash: true
+
+outgoing:
+  request_timeout: 5.0
+  max_request_timeout: 10.0
+  pool_connections: 20
+  pool_maxsize: 10
+

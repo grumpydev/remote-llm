@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+
+usage() {
+	printf 'Usage: sudo scripts/backup [--output DIR] [--config-only]\n'
+}
+
+config_only=false
+while (($#)); do
+	case "$1" in
+	--output)
+		shift
+		[[ $# -gt 0 ]] || die "--output needs a directory"
+		BACKUP_ROOT="$1"
+		;;
+	--config-only) config_only=true ;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*) die "unknown argument: $1" ;;
+	esac
+	shift
+done
+require_root
+require_command tar
+stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+target="${BACKUP_ROOT}/${stamp}"
+install -d -m 0700 "${target}"
+
+if [[ -d "${DEPLOY_DIR}" ]]; then
+	tar -C "$(dirname "${DEPLOY_DIR}")" -czf "${target}/deployment.tar.gz" \
+		"$(basename "${DEPLOY_DIR}")"
+fi
+if [[ -d /opt/ai-agent-stack ]]; then
+	tar -C /opt -czf "${target}/legacy-ai-agent-stack.tar.gz" ai-agent-stack
+fi
+
+if ! "${config_only}" && [[ -f "${DEPLOY_DIR}/.env" ]]; then
+	volume="$(sed -n 's/^OPEN_WEBUI_VOLUME=//p' "${DEPLOY_DIR}/.env")"
+	if docker volume inspect "${volume}" >/dev/null 2>&1; then
+		docker run --rm -v "${volume}:/data:ro" -v "${target}:/backup" \
+			alpine:3.22.1 tar -C /data -czf /backup/open-webui-data.tar.gz .
+	fi
+fi
+chmod -R go-rwx "${target}"
+printf '%s\n' "${target}"

@@ -1,0 +1,121 @@
+name: ${COMPOSE_PROJECT_NAME:-ai-appliance}
+
+x-security: &security
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  init: true
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  searxng:
+    image: ${SEARXNG_IMAGE}
+    platform: linux/amd64
+    restart: unless-stopped
+    <<: *security
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    networks:
+      - internal
+    volumes:
+      - ./runtime/searxng:/etc/searxng:rw
+      - searxng-cache:/var/cache/searxng:rw
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- 'http://127.0.0.1:8080/search?q=health&format=json' | grep -q 'results'"]
+      interval: 20s
+      timeout: 8s
+      retries: 10
+      start_period: 30s
+    logging: *logging
+    pids_limit: 256
+    mem_limit: 1g
+
+  litellm:
+    image: ${LITELLM_IMAGE}
+    platform: linux/amd64
+    restart: unless-stopped
+    <<: *security
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+    env_file:
+      - ./runtime/litellm/provider.env
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    networks:
+      - internal
+      - worker-isolated
+    ports:
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+      - "${TAILSCALE_IP}:${LITELLM_PORT:-4000}:4000"
+    volumes:
+      - ./runtime/litellm/config.yaml:/app/config.yaml:ro
+    depends_on:
+      searxng:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:4000/v1/models',headers={'Authorization':'Bearer '+os.environ['LITELLM_MASTER_KEY']}); urllib.request.urlopen(r,timeout=5)\""]
+      interval: 20s
+      timeout: 8s
+      retries: 15
+      start_period: 30s
+    logging: *logging
+    pids_limit: 512
+    mem_limit: 2g
+
+  open-webui:
+    image: ${OPEN_WEBUI_IMAGE}
+    platform: linux/amd64
+    restart: unless-stopped
+    <<: *security
+    environment:
+      OPENAI_API_BASE_URL: http://litellm:4000/v1
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
+      ENABLE_OLLAMA_API: "false"
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+      ENABLE_WEB_SEARCH: "true"
+      WEB_SEARCH_ENGINE: searxng
+      WEB_SEARCH_RESULT_COUNT: "3"
+      WEB_SEARCH_CONCURRENT_REQUESTS: "3"
+      SEARXNG_QUERY_URL: "http://searxng:8080/search?q=<query>"
+    networks:
+      - internal
+    ports:
+      - "127.0.0.1:${OPEN_WEBUI_PORT:-3000}:8080"
+      - "${TAILSCALE_IP}:${OPEN_WEBUI_PORT:-3000}:8080"
+    volumes:
+      - open-webui-data:/app/backend/data
+    depends_on:
+      litellm:
+        condition: service_healthy
+      searxng:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health',timeout=5)\""]
+      interval: 20s
+      timeout: 8s
+      retries: 15
+      start_period: 60s
+    logging: *logging
+    pids_limit: 1024
+    mem_limit: 4g
+
+networks:
+  internal:
+    internal: false
+  worker-isolated:
+    internal: true
+
+volumes:
+  open-webui-data:
+    name: ${OPEN_WEBUI_VOLUME:-open-webui-data}
+    external: true
+  searxng-cache:
