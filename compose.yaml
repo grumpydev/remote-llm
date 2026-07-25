@@ -29,7 +29,7 @@ services:
       - ./runtime/searxng:/etc/searxng:rw
       - searxng-cache:/var/cache/searxng:rw
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- 'http://127.0.0.1:8080/search?q=health&format=json' | grep -q 'results'"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
       interval: 20s
       timeout: 8s
       retries: 10

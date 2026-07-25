@@ -8,7 +8,9 @@ server:
   bind_address: "0.0.0.0"
   port: 8080
   secret_key: "${SEARXNG_SECRET_KEY}"
-  limiter: true
+  # This service is reachable only by containers on the appliance network.
+  # Enabling SearXNG's limiter requires a separate Valkey deployment.
+  limiter: false
   image_proxy: false
 
 search:
@@ -26,4 +28,3 @@ outgoing:
   max_request_timeout: 10.0
   pool_connections: 20
   pool_maxsize: 10
-

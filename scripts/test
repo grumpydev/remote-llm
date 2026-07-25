@@ -87,6 +87,14 @@ docker compose --env-file versions.env --env-file "${test_env}" \
 	-f compose.yaml -f compose.worker.yaml -f "${compose_override}" \
 	--profile worker config --quiet
 
+grep -q 'http://127.0.0.1:8080/healthz' compose.yaml
+if rg -n 'healthcheck:|test:' compose.yaml -A2 |
+	grep -q '/search?'; then
+	printf 'ERROR: health checks must not depend on live search engines.\n' >&2
+	exit 1
+fi
+grep -q '^[[:space:]]*limiter: false$' config/searxng/settings.yml.template
+
 if rg -n 'image:.*:(latest|main)([[:space:]]|$)' compose.yaml compose.worker.yaml; then
 	printf 'ERROR: moving image tag found.\n' >&2
 	exit 1
