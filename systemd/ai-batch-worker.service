@@ -1,0 +1,25 @@
+[Unit]
+Description=Run one AI appliance batch coding job
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+ConditionPathExists=/opt/ai-appliance/scripts/run-next-job
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/opt/ai-appliance/scripts/run-next-job
+UMask=0027
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/ai-jobs
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+TimeoutStartSec=13h
+

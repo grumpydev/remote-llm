@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+	printf 'Usage: scripts/status\n'
+	exit 0
+fi
+[[ $# -eq 0 ]] || die "no arguments expected"
+[[ -f "${DEPLOY_DIR}/.env" ]] || die "not installed at ${DEPLOY_DIR}"
+compose ps
+tailscale_ip="$(sed -n 's/^TAILSCALE_IP=//p' "${DEPLOY_DIR}/.env")"
+appliance_hostname="$(sed -n 's/^AI_HOSTNAME=//p' "${DEPLOY_DIR}/.env")"
+printf 'LiteLLM:   http://%s:4000/v1\n' "${appliance_hostname}"
+printf 'Open WebUI: http://%s:3000\n' "${appliance_hostname}"
+printf 'Tailscale:  %s\n' "${tailscale_ip}"
+printf 'llama.cpp: http://127.0.0.1:8080/v1 (provider only)\n'

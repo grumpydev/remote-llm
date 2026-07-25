@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+
+usage() {
+	printf 'Usage: sudo scripts/rollback [BACKUP_DIR]\n'
+}
+[[ ${1:-} != "-h" && ${1:-} != "--help" ]] || {
+	usage
+	exit 0
+}
+require_root
+backup="${1:-}"
+if [[ -z "${backup}" ]]; then
+	backup="$(find "${BACKUP_ROOT}" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null | sort | tail -n1)"
+fi
+[[ -n "${backup}" ]] || die "no backup available"
+exec "${SCRIPT_DIR}/restore" "${backup}"

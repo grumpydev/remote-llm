@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+
+usage() {
+	cat <<'EOF'
+Usage: sudo scripts/add-model --alias NAME --provider-model MODEL \
+  --api-base URL --api-key-env ENV [--timeout SECONDS] [--max-retries N]
+
+The API key itself must already be present in the root-owned deployment .env.
+Only the environment variable name is stored in the model registry.
+EOF
+}
+[[ ${1:-} != "-h" && ${1:-} != "--help" ]] || {
+	usage
+	exit 0
+}
+require_root
+[[ -f "${DEPLOY_DIR}/config/litellm/models.json" ]] || die "appliance is not installed"
+api_key_env=""
+previous=""
+for argument in "$@"; do
+	if [[ "${previous}" == "--api-key-env" ]]; then
+		api_key_env="${argument}"
+		break
+	fi
+	previous="${argument}"
+done
+[[ "${api_key_env}" =~ ^[A-Z][A-Z0-9_]{0,63}$ ]] || die "--api-key-env is required"
+grep -qE "^${api_key_env}=.+$" "${DEPLOY_DIR}/.env" ||
+	die "${api_key_env} has no value in ${DEPLOY_DIR}/.env"
+cp "${DEPLOY_DIR}/config/litellm/models.json" "${DEPLOY_DIR}/config/litellm/models.json.bak"
+restore_model() {
+	mv -f "${DEPLOY_DIR}/config/litellm/models.json.bak" \
+		"${DEPLOY_DIR}/config/litellm/models.json"
+	"${DEPLOY_DIR}/scripts/render-config" --env-file "${DEPLOY_DIR}/.env" \
+		--output "${DEPLOY_DIR}/runtime" || true
+	compose up -d --no-deps litellm || true
+}
+trap restore_model ERR
+if ! "${DEPLOY_DIR}/scripts/model-config" \
+	--registry "${DEPLOY_DIR}/config/litellm/models.json" \
+	add "$@" >/dev/null; then
+	mv -f "${DEPLOY_DIR}/config/litellm/models.json.bak" "${DEPLOY_DIR}/config/litellm/models.json"
+	exit 1
+fi
+"${DEPLOY_DIR}/scripts/render-config" --env-file "${DEPLOY_DIR}/.env" \
+	--output "${DEPLOY_DIR}/runtime"
+compose config --quiet
+compose up -d --no-deps litellm
+"${DEPLOY_DIR}/scripts/doctor" --runtime-only
+trap - ERR
+rm -f "${DEPLOY_DIR}/config/litellm/models.json.bak"
+log "Model routing updated and LiteLLM validated."

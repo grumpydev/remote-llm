@@ -1,0 +1,24 @@
+version: 1
+id: example-readme-update
+repository:
+  url: git@github.com:owner/repository.git
+  base_branch: main
+  work_branch: agent/update-readme
+task_file: task.md
+model: glm-4.7-flash
+agent: opencode
+execution:
+  max_runtime_minutes: 180
+  internet_access: true
+  commit_policy: tests-pass
+  push: true
+  shutdown_on_success: false
+  shutdown_on_failure: false
+  shutdown_delay_seconds: 60
+checks:
+  - npm test
+  - npm run lint
+environment:
+  allow:
+    - NODE_OPTIONS
+

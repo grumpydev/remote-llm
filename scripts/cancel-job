@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+	printf 'Usage: sudo scripts/cancel-job JOB_ID\n'
+	exit 0
+fi
+require_root
+[[ $# -eq 1 ]] || die "job ID required"
+PYTHONPATH="${DEPLOY_DIR}" AI_JOBS_ROOT="${AI_JOBS_ROOT:-/srv/ai-jobs}" \
+	AI_SECRETS_DIR="${SECRETS_DIR}" AI_APPLIANCE_DIR="${DEPLOY_DIR}" \
+	exec python3 -m ai_appliance.cli cancel "$1"

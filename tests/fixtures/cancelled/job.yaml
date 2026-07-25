@@ -1,0 +1,16 @@
+version: 1
+id: fixture-cancelled
+repository:
+  url: git@github.com:owner/repository.git
+  base_branch: main
+  work_branch: agent/fixture-cancelled
+task_file: task.md
+model: glm-4.7-flash
+agent: opencode
+execution:
+  max_runtime_minutes: 5
+  internet_access: true
+  commit_policy: never
+  push: false
+checks: []
+

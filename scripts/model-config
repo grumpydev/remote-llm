@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+"""Safely manage stable LiteLLM aliases and render its YAML."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
+SAFE_ENV = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+
+
+def validate(model: dict[str, object]) -> None:
+    for field in ("alias", "provider_model"):
+        if not isinstance(model.get(field), str) or not SAFE_NAME.fullmatch(str(model[field])):
+            raise ValueError(f"unsafe {field}")
+    if not isinstance(model.get("api_base"), str) or not str(model["api_base"]).startswith(
+        ("http://", "https://")
+    ):
+        raise ValueError("api_base must be HTTP(S)")
+    if not isinstance(model.get("api_key_env"), str) or not SAFE_ENV.fullmatch(
+        str(model["api_key_env"])
+    ):
+        raise ValueError("unsafe api_key_env")
+    timeout = int(model.get("timeout", 900))
+    retries = int(model.get("max_retries", 1))
+    if not 30 <= timeout <= 3600 or not 0 <= retries <= 3:
+        raise ValueError("timeout or retry count outside safe range")
+
+
+def yaml_quote(value: object) -> str:
+    return json.dumps(value, ensure_ascii=True)
+
+
+def render(models: list[dict[str, object]]) -> str:
+    lines = ["model_list:"]
+    for model in models:
+        validate(model)
+        lines.extend(
+            [
+                f"  - model_name: {yaml_quote(model['alias'])}",
+                "    litellm_params:",
+                f"      model: {yaml_quote(model['provider_model'])}",
+                f"      api_base: {yaml_quote(model['api_base'])}",
+                f"      api_key: {yaml_quote('os.environ/' + str(model['api_key_env']))}",
+                f"      timeout: {int(model.get('timeout', 900))}",
+                f"      stream_timeout: {int(model.get('timeout', 900))}",
+                f"      max_retries: {int(model.get('max_retries', 1))}",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "litellm_settings:",
+            "  request_timeout: 900",
+            "  num_retries: 1",
+            "  drop_params: true",
+            "  set_verbose: false",
+            "  json_logs: true",
+            "  redact_user_api_key_info: true",
+            "  turn_off_message_logging: true",
+            "",
+            "general_settings:",
+            '  master_key: "os.environ/LITELLM_MASTER_KEY"',
+            "  disable_spend_logs: true",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def atomic_json(path: Path, value: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=path.name, dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, indent=2)
+            handle.write("\n")
+        os.chmod(name, 0o644)
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--registry", type=Path, default=ROOT / "config/litellm/models.json")
+    parser.add_argument("--output", type=Path)
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("render")
+    add = sub.add_parser("add")
+    add.add_argument("--alias", required=True)
+    add.add_argument("--provider-model", required=True)
+    add.add_argument("--api-base", required=True)
+    add.add_argument("--api-key-env", required=True)
+    add.add_argument("--timeout", type=int, default=900)
+    add.add_argument("--max-retries", type=int, default=1)
+    remove = sub.add_parser("remove")
+    remove.add_argument("--alias", required=True)
+    args = parser.parse_args()
+
+    models = json.loads(args.registry.read_text(encoding="utf-8"))
+    if not isinstance(models, list):
+        raise ValueError("model registry must be an array")
+    if args.command == "add":
+        new = {
+            "alias": args.alias,
+            "provider_model": args.provider_model,
+            "api_base": args.api_base,
+            "api_key_env": args.api_key_env,
+            "timeout": args.timeout,
+            "max_retries": args.max_retries,
+        }
+        validate(new)
+        models = [item for item in models if item.get("alias") != args.alias] + [new]
+        atomic_json(args.registry, models)
+    elif args.command == "remove":
+        if args.alias == "glm-4.7-flash":
+            raise ValueError("refusing to remove the required initial alias")
+        filtered = [item for item in models if item.get("alias") != args.alias]
+        if len(filtered) == len(models):
+            raise ValueError(f"model alias not found: {args.alias}")
+        models = filtered
+        atomic_json(args.registry, models)
+
+    output = render(models)
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(output, encoding="utf-8")
+        args.output.chmod(0o600)
+    else:
+        sys.stdout.write(output)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (ValueError, json.JSONDecodeError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(2)
+

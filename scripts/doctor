@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+set -uo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+
+usage() {
+	printf 'Usage: scripts/doctor [--runtime-only]\n'
+}
+runtime_only=false
+case "${1:-}" in
+--runtime-only) runtime_only=true ;;
+-h | --help)
+	usage
+	exit 0
+	;;
+"") ;;
+*) die "unknown argument: $1" ;;
+esac
+
+failures=0
+pass() { printf 'PASS  %s\n' "$*"; }
+warn() { printf 'WARN  %s\n' "$*"; }
+fail() {
+	printf 'FAIL  %s\n' "$*" >&2
+	failures=$((failures + 1))
+}
+check_cmd() {
+	if command -v "$1" >/dev/null 2>&1; then pass "$1 available"; else fail "$1 unavailable"; fi
+}
+
+if ! "${runtime_only}"; then
+	if [[ "$(uname -s)" == Linux ]]; then pass "Linux host"; else warn "not Linux (static checks only)"; fi
+	if [[ "$(uname -m)" == x86_64 ]]; then pass "amd64 architecture"; else warn "not amd64"; fi
+	check_cmd docker
+	if docker compose version >/dev/null 2>&1; then pass "Docker Compose v2"; else fail "Docker Compose v2 unavailable"; fi
+	check_cmd tailscale
+	if tailscale ip -4 >/dev/null 2>&1; then pass "Tailscale IPv4 available"; else fail "Tailscale disconnected"; fi
+	if command -v ufw >/dev/null 2>&1; then
+		if ufw status 2>/dev/null | grep -q '^Status: active'; then warn "UFW active; verify Tailscale rules"; else pass "UFW inactive"; fi
+	else
+		warn "UFW not installed"
+	fi
+	if command -v git >/dev/null 2>&1; then pass "Git available"; else fail "Git unavailable"; fi
+	if [[ -f "${SECRETS_DIR}/repositories.allow" ]]; then pass "repository allow-list present"; else warn "repository allow-list missing"; fi
+	if [[ -f "${SECRETS_DIR}/known_hosts" ]]; then pass "managed known_hosts present"; else warn "managed known_hosts missing"; fi
+	if df -Pk "${AI_JOBS_ROOT:-/srv/ai-jobs}" 2>/dev/null | awk 'NR==2 {exit !($4 > 10485760)}'; then
+		pass "at least 10 GiB free for jobs"
+	else
+		warn "less than 10 GiB free or queue absent"
+	fi
+	if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+		pass "GPU visible on host"
+	else
+		warn "GPU not visible (not needed for client-only tests)"
+	fi
+	if systemctl is-enabled ai-batch-worker.path ai-poweroff-check.timer >/dev/null 2>&1; then
+		pass "batch dispatcher and poweroff policy enabled"
+	else
+		warn "batch dispatcher or poweroff policy is not enabled"
+	fi
+fi
+
+[[ -f "${DEPLOY_DIR}/.env" ]] || fail "deployment environment missing"
+
+if [[ -f "${DEPLOY_DIR}/.env" ]]; then
+	master_key="$(sed -n 's/^LITELLM_MASTER_KEY=//p' "${DEPLOY_DIR}/.env")"
+	llama_key="$(sed -n 's/^LLAMA_API_KEY=//p' "${DEPLOY_DIR}/.env")"
+	tailscale_ip="$(sed -n 's/^TAILSCALE_IP=//p' "${DEPLOY_DIR}/.env")"
+	if [[ -n "${llama_key}" ]]; then pass "deployed llama.cpp key readable"; else fail "deployed llama.cpp key unreadable"; fi
+	if curl -fsS --max-time 5 -H "Authorization: Bearer ${llama_key}" \
+		http://127.0.0.1:8080/v1/models 2>/dev/null | grep -q 'glm-4.7-flash'; then
+		pass "llama.cpp model endpoint"
+	else
+		fail "llama.cpp endpoint/model unavailable"
+	fi
+	if compose config --quiet >/dev/null 2>&1; then pass "Compose configuration"; else fail "Compose configuration invalid"; fi
+	if curl -fsS --max-time 10 -H "Authorization: Bearer ${master_key}" \
+		http://127.0.0.1:4000/v1/models 2>/dev/null | grep -q 'glm-4.7-flash'; then
+		pass "LiteLLM authenticated model list"
+	else
+		fail "LiteLLM unavailable or model absent"
+	fi
+	if curl -fsS --max-time 10 http://127.0.0.1:3000/health >/dev/null 2>&1; then
+		pass "Open WebUI health"
+	else
+		fail "Open WebUI unavailable"
+	fi
+	if compose exec -T open-webui python -c \
+		"import json,urllib.request; r=urllib.request.Request('http://litellm:4000/v1/models',headers={'Authorization':'Bearer ${master_key}'}); assert any(x['id']=='glm-4.7-flash' for x in json.load(urllib.request.urlopen(r))['data'])" \
+		>/dev/null 2>&1; then
+		pass "Open WebUI network reaches LiteLLM model"
+	else
+		fail "Open WebUI cannot reach model"
+	fi
+	if compose exec -T open-webui python -c \
+		"import json,urllib.parse,urllib.request; u='http://searxng:8080/search?'+urllib.parse.urlencode({'q':'health','format':'json'}); assert 'results' in json.load(urllib.request.urlopen(u))" \
+		>/dev/null 2>&1; then
+		pass "SearXNG JSON from Open WebUI network"
+	else
+		fail "SearXNG JSON check failed"
+	fi
+	if curl -fsS --max-time 5 -H "Authorization: Bearer ${master_key}" \
+		"http://${tailscale_ip}:4000/v1/models" >/dev/null 2>&1; then
+		pass "Tailscale LiteLLM binding"
+	else
+		warn "Tailscale binding not reachable locally"
+	fi
+	if worker_compose --profile worker run --rm --no-deps opencode-worker version \
+		2>/dev/null | grep -q '^1\.4\.11$'; then
+		pass "pinned OpenCode worker image"
+	else
+		fail "pinned OpenCode worker image unavailable"
+	fi
+else
+	if [[ -r /etc/llama-server.api-key ]]; then
+		llama_key="$(tr -d '\r\n' </etc/llama-server.api-key)"
+		if curl -fsS --max-time 5 -H "Authorization: Bearer ${llama_key}" \
+			http://127.0.0.1:8080/v1/models 2>/dev/null | grep -q 'glm-4.7-flash'; then
+			pass "pre-install llama.cpp model endpoint"
+		else
+			fail "pre-install llama.cpp endpoint/model unavailable"
+		fi
+	else
+		fail "pre-install llama.cpp key unreadable; run doctor with sudo"
+	fi
+fi
+
+if ((failures)); then
+	printf '%d critical check(s) failed.\n' "${failures}" >&2
+	exit 1
+fi
+printf 'All critical checks passed.\n'

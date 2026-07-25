@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+
+usage() {
+	cat <<'EOF'
+Usage: sudo scripts/migrate [--dry-run]
+
+Audit and back up the legacy tooling stack, preserve the detected Open WebUI
+volume, stop only replaced containers, install the appliance, and restore prior
+containers automatically if cutover fails.
+EOF
+}
+dry_run=false
+[[ ${1:-} != "--dry-run" ]] || dry_run=true
+[[ ${1:-} != "-h" && ${1:-} != "--help" ]] || {
+	usage
+	exit 0
+}
+require_root
+require_command docker
+
+mapfile -t legacy_running < <(
+	docker ps --format '{{.Names}}' |
+		grep -E '^(open-webui|searxng|open-terminal|litellm)$' || true
+)
+mapfile -t volumes < <(docker volume ls --format '{{.Name}}' | grep -E '(^|_)open-webui-data$' || true)
+mounted_volume="$(
+	docker inspect open-webui \
+		--format '{{range .Mounts}}{{if eq .Destination "/app/backend/data"}}{{.Name}}{{end}}{{end}}' \
+		2>/dev/null || true
+)"
+preserved_volume="${mounted_volume:-${volumes[0]:-open-webui-data}}"
+
+log "Legacy running containers: ${legacy_running[*]:-(none)}"
+log "Open WebUI volumes: ${volumes[*]:-(none)}"
+log "Selected volume: ${preserved_volume}"
+if "${dry_run}"; then
+	"${SCRIPT_DIR}/install" --dry-run
+	exit 0
+fi
+
+backup="$("${SCRIPT_DIR}/backup")"
+restore_legacy() {
+	local name
+	log "Cutover failed; stopping new tooling and restoring prior running containers." >&2
+	if [[ -f "${DEPLOY_DIR}/.env" ]]; then
+		compose down --remove-orphans || true
+	fi
+	for name in "${legacy_running[@]}"; do
+		docker start "${name}" >/dev/null 2>&1 || true
+	done
+	log "Backup retained at ${backup}" >&2
+}
+trap restore_legacy ERR
+
+for name in "${legacy_running[@]}"; do
+	docker stop "${name}" >/dev/null
+done
+"${SCRIPT_DIR}/install"
+sed -i.bak -E "s/^OPEN_WEBUI_VOLUME=.*/OPEN_WEBUI_VOLUME=${preserved_volume}/" "${DEPLOY_DIR}/.env"
+compose up -d --force-recreate open-webui
+validate_deployment
+trap - ERR
+log "Migration validated. Backup: ${backup}"
