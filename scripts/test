@@ -106,6 +106,7 @@ grep -q "comment 'AI appliance to llama.cpp'" scripts/install
 grep -q -- '--fresh-open-webui' scripts/migrate
 grep -q -- "--open-webui-volume \"\${preserved_volume}\"" scripts/migrate
 grep -q '^[[:space:]]*- DAC_READ_SEARCH$' compose.yaml
+grep -q 'BYPASS_WEB_SEARCH_WEB_LOADER: "true"' compose.yaml
 grep -q 'worker_compose --profile worker run -T --rm --no-deps' scripts/doctor
 grep -q 'LiteLLM authenticated chat completion' scripts/doctor
 

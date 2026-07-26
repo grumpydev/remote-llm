@@ -109,11 +109,11 @@ if [[ -f "${DEPLOY_DIR}/.env" ]]; then
 		fail "Open WebUI cannot reach model"
 	fi
 	if compose exec -T open-webui python -c \
-		"import json,urllib.parse,urllib.request; u='http://searxng:8080/search?'+urllib.parse.urlencode({'q':'health','format':'json'}); assert 'results' in json.load(urllib.request.urlopen(u))" \
+		"import json,urllib.parse,urllib.request; u='http://searxng:8080/search?'+urllib.parse.urlencode({'q':'latest Linux release','format':'json'}); assert json.load(urllib.request.urlopen(u))['results']" \
 		>/dev/null 2>&1; then
-		pass "SearXNG JSON from Open WebUI network"
+		pass "SearXNG results from Open WebUI network"
 	else
-		fail "SearXNG JSON check failed"
+		fail "SearXNG returned no results to Open WebUI"
 	fi
 	if curl -fsS --max-time 5 -H "Authorization: Bearer ${master_key}" \
 		"http://${tailscale_ip}:4000/v1/models" >/dev/null 2>&1; then
