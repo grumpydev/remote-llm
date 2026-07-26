@@ -117,7 +117,7 @@ add_route() {
 		--registry "${DEPLOY_DIR}/config/litellm/models.json" \
 		add \
 		--alias "${alias}" \
-		--provider-model "openai/${source}" \
+		--provider-model "openai/${alias}" \
 		--api-base http://host.docker.internal:8080/v1 \
 		--api-key-env LLAMA_API_KEY \
 		--timeout 900 \

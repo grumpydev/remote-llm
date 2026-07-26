@@ -72,10 +72,11 @@ def atomic_json(path: Path, value: object) -> None:
 def render(models: list[dict[str, object]]) -> str:
     lines = ["version = 1", ""]
     for model in models:
+        alias = str(model["alias"])
         source = str(model["source"])
         lines.extend(
             [
-                f"[{source}]",
+                f"[{alias}]",
                 f"hf-repo = {source}",
                 f"ctx-size = {int(model.get('context', 32768))}",
                 f"n-gpu-layers = {int(model.get('gpu_layers', 99))}",

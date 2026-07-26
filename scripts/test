@@ -107,7 +107,7 @@ scripts/router-config --catalogue "${router_catalogue}" \
 	--display-name "Test Coder" --context 8192 --output-tokens 2048 >/dev/null
 scripts/router-config --catalogue "${router_catalogue}" \
 	--output "${router_preset}" render
-grep -q '^\[example/test-coder-GGUF:Q4_K_M\]$' "${router_preset}"
+grep -q '^\[test-coder\]$' "${router_preset}"
 grep -q '^hf-repo = example/test-coder-GGUF:Q4_K_M$' "${router_preset}"
 grep -q '^ctx-size = 8192$' "${router_preset}"
 scripts/router-config --catalogue "${router_catalogue}" \

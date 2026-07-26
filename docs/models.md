@@ -44,6 +44,10 @@ and the generated OpenCode catalogue together. A failed update restores both
 catalogues. Removing an entry deliberately retains its cached GGUF; cache
 deletion is a separate manual storage operation.
 
+The stable alias is also the native router preset name. The Hugging Face source
+is stored inside that preset, so clients never need to send repository names or
+quantization tags as model identifiers.
+
 `ai-model add` uses llama.cpp's authenticated `POST /models` endpoint and waits
 for the download to appear in its cache before publishing the alias. Large
 models can therefore keep the command running for some time. The first request
