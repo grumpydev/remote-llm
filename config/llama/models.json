@@ -1,0 +1,11 @@
+[
+  {
+    "alias": "glm-4.7-flash",
+    "source": "unsloth/GLM-4.7-Flash-GGUF:UD-Q4_K_XL",
+    "display_name": "GLM 4.7 Flash",
+    "context": 65536,
+    "output": 16384,
+    "gpu_layers": 99,
+    "flash_attention": true
+  }
+]

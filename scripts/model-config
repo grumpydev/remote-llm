@@ -31,6 +31,19 @@ def validate(model: dict[str, object]) -> None:
     retries = int(model.get("max_retries", 1))
     if not 30 <= timeout <= 3600 or not 0 <= retries <= 3:
         raise ValueError("timeout or retry count outside safe range")
+    for field in ("display_name",):
+        if field in model and (
+            not isinstance(model[field], str)
+            or not 1 <= len(str(model[field])) <= 128
+            or any(character in str(model[field]) for character in "\r\n")
+        ):
+            raise ValueError(f"unsafe {field}")
+    for field, minimum, maximum in (
+        ("context", 1024, 1048576),
+        ("output", 1, 262144),
+    ):
+        if field in model and not minimum <= int(model[field]) <= maximum:
+            raise ValueError(f"{field} outside safe range")
 
 
 def yaml_quote(value: object) -> str:
@@ -101,6 +114,9 @@ def main() -> int:
     add.add_argument("--api-key-env", required=True)
     add.add_argument("--timeout", type=int, default=900)
     add.add_argument("--max-retries", type=int, default=1)
+    add.add_argument("--display-name")
+    add.add_argument("--context", type=int)
+    add.add_argument("--output", type=int)
     remove = sub.add_parser("remove")
     remove.add_argument("--alias", required=True)
     args = parser.parse_args()
@@ -117,6 +133,10 @@ def main() -> int:
             "timeout": args.timeout,
             "max_retries": args.max_retries,
         }
+        for field in ("display_name", "context", "output"):
+            value = getattr(args, field)
+            if value is not None:
+                new[field] = value
         validate(new)
         models = [item for item in models if item.get("alias") != args.alias] + [new]
         atomic_json(args.registry, models)
@@ -145,4 +165,3 @@ if __name__ == "__main__":
     except (ValueError, json.JSONDecodeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(2)
-

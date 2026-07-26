@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""Manage and render the native llama.cpp router model catalogue."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+import tempfile
+from pathlib import Path
+
+SAFE_ALIAS = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+SAFE_SOURCE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}/"
+    r"[A-Za-z0-9][A-Za-z0-9._-]{0,191}:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+)
+
+
+def validate(model: dict[str, object]) -> None:
+    alias = model.get("alias")
+    source = model.get("source")
+    if not isinstance(alias, str) or not SAFE_ALIAS.fullmatch(alias):
+        raise ValueError("unsafe alias")
+    if not isinstance(source, str) or not SAFE_SOURCE.fullmatch(source):
+        raise ValueError("source must be a Hugging Face repo and quant tag: owner/repo:quant")
+    display = model.get("display_name", alias)
+    if not isinstance(display, str) or not 1 <= len(display) <= 128 or any(c in display for c in "\r\n"):
+        raise ValueError("unsafe display name")
+    context = int(model.get("context", 32768))
+    output = int(model.get("output", min(context, 16384)))
+    gpu_layers = int(model.get("gpu_layers", 99))
+    if not 1024 <= context <= 1048576:
+        raise ValueError("context outside safe range")
+    if not 1 <= output <= context:
+        raise ValueError("output outside safe range")
+    if not 0 <= gpu_layers <= 999:
+        raise ValueError("gpu layer count outside safe range")
+    if not isinstance(model.get("flash_attention", True), bool):
+        raise ValueError("flash_attention must be boolean")
+
+
+def load(path: Path) -> list[dict[str, object]]:
+    models = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(models, list) or not models:
+        raise ValueError("router catalogue must be a non-empty array")
+    for model in models:
+        if not isinstance(model, dict):
+            raise ValueError("router catalogue entries must be objects")
+        validate(model)
+    aliases = [str(model["alias"]) for model in models]
+    sources = [str(model["source"]) for model in models]
+    if len(set(aliases)) != len(aliases) or len(set(sources)) != len(sources):
+        raise ValueError("router aliases and sources must be unique")
+    return models
+
+
+def atomic_json(path: Path, value: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=path.name, dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, indent=2)
+            handle.write("\n")
+        os.chmod(name, 0o640)
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def render(models: list[dict[str, object]]) -> str:
+    lines = ["version = 1", ""]
+    for model in models:
+        source = str(model["source"])
+        lines.extend(
+            [
+                f"[{source}]",
+                f"hf-repo = {source}",
+                f"ctx-size = {int(model.get('context', 32768))}",
+                f"n-gpu-layers = {int(model.get('gpu_layers', 99))}",
+                f"flash-attn = {'on' if model.get('flash_attention', True) else 'off'}",
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--catalogue", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("list")
+    sub.add_parser("render")
+    add = sub.add_parser("add")
+    add.add_argument("--alias", required=True)
+    add.add_argument("--source", required=True)
+    add.add_argument("--display-name")
+    add.add_argument("--context", type=int, default=32768)
+    add.add_argument("--output-tokens", type=int, default=16384)
+    add.add_argument("--gpu-layers", type=int, default=99)
+    add.add_argument("--no-flash-attention", action="store_true")
+    remove = sub.add_parser("remove")
+    remove.add_argument("--alias", required=True)
+    args = parser.parse_args()
+
+    models = load(args.catalogue)
+    if args.command == "list":
+        for model in models:
+            print(
+                f"{model['alias']}\t{model['source']}\t"
+                f"context={model.get('context', 32768)}"
+            )
+        return 0
+    if args.command == "add":
+        new: dict[str, object] = {
+            "alias": args.alias,
+            "source": args.source,
+            "display_name": args.display_name or args.alias,
+            "context": args.context,
+            "output": args.output_tokens,
+            "gpu_layers": args.gpu_layers,
+            "flash_attention": not args.no_flash_attention,
+        }
+        validate(new)
+        if any(item["alias"] == args.alias or item["source"] == args.source for item in models):
+            raise ValueError("alias or source is already registered")
+        models.append(new)
+        atomic_json(args.catalogue, models)
+    elif args.command == "remove":
+        if args.alias == models[0]["alias"]:
+            raise ValueError("refusing to remove the default model")
+        filtered = [model for model in models if model["alias"] != args.alias]
+        if len(filtered) == len(models):
+            raise ValueError(f"model alias not found: {args.alias}")
+        models = filtered
+        atomic_json(args.catalogue, models)
+
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(render(models), encoding="utf-8")
+        args.output.chmod(0o640)
+    else:
+        sys.stdout.write(render(models))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (ValueError, json.JSONDecodeError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(2)

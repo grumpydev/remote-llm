@@ -1,7 +1,36 @@
 # Batch coding jobs
 
-Open WebUI is the user chat interface. OpenCode is the unattended coding worker.
-They are deliberately separate.
+Open WebUI is the user chat interface. OpenCode is the coding worker: normally
+queued and unattended, with an explicit narrow-mount launcher for interactive
+sessions. The interfaces remain deliberately separate.
+
+## Interactive OpenCode
+
+The same pinned worker can be used interactively without remembering its
+Compose invocation:
+
+```bash
+cd ~/src/my-project
+ai-opencode .
+```
+
+Choose a registered model for this session:
+
+```bash
+ai-opencode --model qwen-coder .
+```
+
+The launcher resolves the selected directory and mounts only that directory at
+`/workspace`. It does not mount the host home, Docker socket, `/etc`, or
+unrelated repositories. Put OpenCode-specific arguments after `--`:
+
+```bash
+ai-opencode . -- --help
+```
+
+Docker access follows the administrator account's normal Docker group policy.
+Do not run the launcher with `sudo`; doing so can leave root-owned files in the
+working repository.
 
 ## Queue and policies
 
