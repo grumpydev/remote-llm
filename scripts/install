@@ -197,7 +197,9 @@ for service_port in "litellm:${litellm_port}" "open-webui:${webui_port}"; do
 		die "TCP port ${port} is already in use by a process outside this appliance"
 	fi
 done
-compose up -d searxng
+# Runtime configuration is rendered immediately above. Recreate SearXNG so an
+# existing container cannot retain stale mounts or an old unhealthy state.
+compose up -d --force-recreate searxng
 compose up -d litellm
 compose up -d open-webui
 worker_compose --profile worker build opencode-worker
