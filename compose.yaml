@@ -21,6 +21,9 @@ services:
     <<: *security
     cap_add:
       - CHOWN
+      # The entrypoint starts as capability-restricted root and must inspect
+      # the private uid-977 configuration before Granian drops privileges.
+      - DAC_READ_SEARCH
       - SETGID
       - SETUID
     networks:
