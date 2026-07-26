@@ -67,7 +67,9 @@ runtime_dir="$(mktemp -d)"
 compose_override="$(mktemp)"
 router_catalogue="$(mktemp)"
 router_preset="$(mktemp)"
-trap 'rm -f -- "${test_env}" "${compose_override}" "${router_catalogue}" "${router_preset}"; rm -rf -- "${runtime_dir}"' EXIT
+routing_registry="$(mktemp)"
+routing_yaml="$(mktemp)"
+trap 'rm -f -- "${test_env}" "${compose_override}" "${router_catalogue}" "${router_preset}" "${routing_registry}" "${routing_yaml}"; rm -rf -- "${runtime_dir}"' EXIT
 sed \
 	-e 's/^TAILSCALE_IP=.*/TAILSCALE_IP=100.64.0.10/' \
 	-e 's/CHANGE_ME/0123456789abcdef0123456789abcdef/g' \
@@ -120,6 +122,18 @@ if scripts/router-config --catalogue "${router_catalogue}" \
 	printf 'ERROR: router accepted an unsafe model source.\n' >&2
 	exit 1
 fi
+
+cp config/litellm/models.json "${routing_registry}"
+scripts/model-config --registry "${routing_registry}" --output "${routing_yaml}" \
+	add --alias test-coder \
+	--provider-model openai/example/test-coder-GGUF:Q4_K_M \
+	--api-base http://host.docker.internal:8080/v1 \
+	--api-key-env LLAMA_API_KEY \
+	--display-name "Test Coder" --context 8192 --output-tokens 2048 >/dev/null
+grep -q 'model_name: "test-coder"' "${routing_yaml}"
+python3 -c \
+	"import json,sys; model=next(x for x in json.load(open(sys.argv[1])) if x['alias']=='test-coder'); assert model['output']==2048" \
+	"${routing_registry}"
 
 grep -q 'http://127.0.0.1:8080/healthz' compose.yaml
 if rg -n 'healthcheck:|test:' compose.yaml -A2 |

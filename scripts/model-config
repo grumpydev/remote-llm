@@ -116,7 +116,7 @@ def main() -> int:
     add.add_argument("--max-retries", type=int, default=1)
     add.add_argument("--display-name")
     add.add_argument("--context", type=int)
-    add.add_argument("--output", type=int)
+    add.add_argument("--output-tokens", type=int)
     remove = sub.add_parser("remove")
     remove.add_argument("--alias", required=True)
     args = parser.parse_args()
@@ -133,8 +133,12 @@ def main() -> int:
             "timeout": args.timeout,
             "max_retries": args.max_retries,
         }
-        for field in ("display_name", "context", "output"):
-            value = getattr(args, field)
+        for field, argument in (
+            ("display_name", "display_name"),
+            ("context", "context"),
+            ("output", "output_tokens"),
+        ):
+            value = getattr(args, argument)
             if value is not None:
                 new[field] = value
         validate(new)
