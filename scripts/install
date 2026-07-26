@@ -201,7 +201,7 @@ done
 # existing container cannot retain stale mounts or an old unhealthy state.
 compose up -d --force-recreate searxng
 compose up -d litellm
-compose up -d open-webui
+compose up -d --wait --wait-timeout 300 open-webui
 worker_compose --profile worker build opencode-worker
 validate_deployment
 
