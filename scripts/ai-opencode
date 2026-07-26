@@ -58,6 +58,15 @@ if [[ -n "${model}" ]]; then
 	opencode_args=(--model "appliance/${model}" "${opencode_args[@]}")
 fi
 
+run_uid="${SUDO_UID:-$(id -u)}"
+run_gid="${SUDO_GID:-$(id -g)}"
+[[ "${run_uid}" =~ ^[0-9]+$ && "${run_gid}" =~ ^[0-9]+$ ]] ||
+	die "could not determine the workspace owner"
+
 worker_compose --profile worker run --rm --no-deps \
+	--user "${run_uid}:${run_gid}" \
+	-e HOME=/tmp/interactive-home \
+	-e XDG_CACHE_HOME=/tmp/interactive-cache \
+	-e npm_config_cache=/tmp/interactive-npm-cache \
 	-v "${workspace}:/workspace:rw" \
 	opencode-worker shell opencode "${opencode_args[@]}"

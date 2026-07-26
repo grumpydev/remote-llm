@@ -29,8 +29,9 @@ ai-opencode . -- --help
 ```
 
 Docker access follows the administrator account's normal Docker group policy.
-Do not run the launcher with `sudo`; doing so can leave root-owned files in the
-working repository.
+If Docker requires elevation, use `sudo ai-opencode .`. The launcher passes the
+original account's numeric UID/GID into the interactive container, so generated
+files remain owned by that account rather than root.
 
 ## Queue and policies
 
