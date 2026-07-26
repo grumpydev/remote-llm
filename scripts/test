@@ -72,6 +72,12 @@ sed \
 	.env.example >"${test_env}"
 scripts/render-config --env-file "${test_env}" --output "${runtime_dir}"
 grep -q '^LLAMA_API_KEY=' "${runtime_dir}/litellm/provider.env"
+[[ "$(stat -c '%a' "${runtime_dir}/searxng/settings.yml" 2>/dev/null ||
+	stat -f '%Lp' "${runtime_dir}/searxng/settings.yml")" == 600 ]]
+if [[ "${EUID}" -eq 0 ]]; then
+	[[ "$(stat -c '%u:%g' "${runtime_dir}/searxng/settings.yml")" == 977:977 ]]
+	[[ "$(stat -c '%a' "${runtime_dir}/searxng")" == 700 ]]
+fi
 if grep -qE 'LITELLM_MASTER_KEY|WEBUI_SECRET_KEY|SEARXNG_SECRET_KEY' \
 	"${runtime_dir}/litellm/provider.env"; then
 	printf 'ERROR: unrelated secret leaked into provider environment.\n' >&2
