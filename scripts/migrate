@@ -61,7 +61,7 @@ for name in "${legacy_running[@]}"; do
 done
 "${SCRIPT_DIR}/install"
 sed -i.bak -E "s/^OPEN_WEBUI_VOLUME=.*/OPEN_WEBUI_VOLUME=${preserved_volume}/" "${DEPLOY_DIR}/.env"
-compose up -d --force-recreate open-webui
+compose up -d --force-recreate --wait --wait-timeout 300 open-webui
 validate_deployment
 trap - ERR
 log "Migration validated. Backup: ${backup}"
