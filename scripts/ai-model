@@ -124,7 +124,7 @@ add_route() {
 		--max-retries 1 \
 		--display-name "${display_name}" \
 		--context "${context}" \
-		--output "${output}" >/dev/null
+		--output-tokens "${output}" >/dev/null
 }
 
 catalogue_row() {
