@@ -88,6 +88,10 @@ services:
       WEB_SEARCH_ENGINE: searxng
       WEB_SEARCH_RESULT_COUNT: "3"
       WEB_SEARCH_CONCURRENT_REQUESTS: "3"
+      # Open WebUI v0.9.5's safe async page loader passes allow_redirects
+      # twice and discards every fetched page. Use SearXNG's real snippets
+      # until a later pinned release fixes the loader.
+      BYPASS_WEB_SEARCH_WEB_LOADER: "true"
       SEARXNG_QUERY_URL: "http://searxng:8080/search?q=<query>"
     networks:
       - internal
