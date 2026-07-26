@@ -106,8 +106,9 @@ if [[ -f "${DEPLOY_DIR}/.env" ]]; then
 	else
 		warn "Tailscale binding not reachable locally"
 	fi
-	if worker_compose --profile worker run --rm --no-deps opencode-worker version \
-		2>/dev/null | grep -q '^1\.4\.11$'; then
+	opencode_version="$(sed -n 's/^OPENCODE_VERSION=//p' "${DEPLOY_DIR}/versions.env")"
+	if worker_compose --profile worker run -T --rm --no-deps opencode-worker version \
+		2>/dev/null | grep -Fqx "${opencode_version}"; then
 		pass "pinned OpenCode worker image"
 	else
 		fail "pinned OpenCode worker image unavailable"

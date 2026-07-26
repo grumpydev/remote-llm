@@ -102,6 +102,7 @@ fi
 grep -q '^[[:space:]]*limiter: false$' config/searxng/settings.yml.template
 grep -q 'compose up -d --force-recreate searxng' scripts/install
 grep -q '^[[:space:]]*- DAC_READ_SEARCH$' compose.yaml
+grep -q 'run -T --rm --no-deps opencode-worker version' scripts/doctor
 
 if rg -n 'image:.*:(latest|main)([[:space:]]|$)' compose.yaml compose.worker.yaml; then
 	printf 'ERROR: moving image tag found.\n' >&2
