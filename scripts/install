@@ -159,6 +159,9 @@ install -d -m 0750 "${DEPLOY_DIR}/runtime"
 "${DEPLOY_DIR}/scripts/render-config" --env-file "${env_file}" \
 	--output "${DEPLOY_DIR}/runtime"
 
+compose_project_name="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "${env_file}")"
+[[ "${compose_project_name}" =~ ^[a-z0-9][a-z0-9_-]{0,62}$ ]] ||
+	die "unsafe Compose project name"
 volume="$(sed -n 's/^OPEN_WEBUI_VOLUME=//p' "${env_file}")"
 [[ "${volume}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || die "unsafe volume name"
 docker volume inspect "${volume}" >/dev/null 2>&1 || docker volume create "${volume}" >/dev/null
@@ -221,6 +224,17 @@ done
 # Runtime configuration is rendered immediately above. Recreate SearXNG so an
 # existing container cannot retain stale mounts or an old unhealthy state.
 compose up -d --force-recreate searxng
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
+	internal_network_id="$(
+		docker network inspect "${compose_project_name}_internal" \
+			--format '{{.Id}}'
+	)"
+	[[ "${internal_network_id}" =~ ^[a-f0-9]{12,64}$ ]] ||
+		die "could not resolve the appliance Docker bridge"
+	internal_bridge="br-${internal_network_id:0:12}"
+	ufw allow in on "${internal_bridge}" to any port 8080 proto tcp \
+		comment 'AI appliance to llama.cpp'
+fi
 compose up -d litellm
 compose up -d --wait --wait-timeout 300 open-webui
 worker_compose --profile worker build opencode-worker

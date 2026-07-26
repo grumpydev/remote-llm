@@ -81,6 +81,21 @@ if [[ -f "${DEPLOY_DIR}/.env" ]]; then
 	else
 		fail "LiteLLM unavailable or model absent"
 	fi
+	completion=""
+	if completion="$(
+		curl -fsS --max-time 30 \
+			-H "Authorization: Bearer ${master_key}" \
+			-H 'Content-Type: application/json' \
+			http://127.0.0.1:4000/v1/chat/completions \
+			-d '{"model":"glm-4.7-flash","messages":[{"role":"user","content":"Reply with only OK"}],"max_tokens":1,"stream":false}' \
+			2>/dev/null
+	)" && python3 -c \
+		"import json,sys; data=json.load(sys.stdin); assert data.get('choices')" \
+		<<<"${completion}"; then
+		pass "LiteLLM authenticated chat completion"
+	else
+		fail "LiteLLM chat completion unavailable"
+	fi
 	if curl -fsS --max-time 10 http://127.0.0.1:3000/health >/dev/null 2>&1; then
 		pass "Open WebUI health"
 	else

@@ -17,8 +17,10 @@ Open WebUI :3000 ──────────┘
 
 Docker reaches the native provider through the Linux
 `host.docker.internal:host-gateway` mapping. The deployment checks both the
-provider model list and an authenticated LiteLLM model list before declaring the
-stack healthy.
+provider model list and an authenticated LiteLLM chat completion before
+declaring the stack healthy. When UFW is active, the installer permits provider
+traffic only on the appliance's Docker bridge interface; port 8080 is not opened
+to LAN or Tailscale clients.
 
 ## Batch path
 
@@ -64,4 +66,3 @@ restarts previously running containers where possible. Volumes are never
 silently deleted. Version rollback restores the previous version lock and
 configuration, then health-checks the reverted stack. Native llama.cpp remains
 untouched.
-
