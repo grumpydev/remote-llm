@@ -6,19 +6,28 @@ source "${SCRIPT_DIR}/_common.sh"
 
 usage() {
 	cat <<'EOF'
-Usage: sudo scripts/migrate [--dry-run]
+Usage: sudo scripts/migrate [--dry-run] [--fresh-open-webui]
 
 Audit and back up the legacy tooling stack, preserve the detected Open WebUI
 volume, stop only replaced containers, install the appliance, and restore prior
-containers automatically if cutover fails.
+containers automatically if cutover fails. With --fresh-open-webui, retain the
+legacy volume and backups but start the appliance with a new empty data volume.
 EOF
 }
 dry_run=false
-[[ ${1:-} != "--dry-run" ]] || dry_run=true
-[[ ${1:-} != "-h" && ${1:-} != "--help" ]] || {
-	usage
-	exit 0
-}
+fresh_open_webui=false
+while (($#)); do
+	case "$1" in
+	--dry-run) dry_run=true ;;
+	--fresh-open-webui) fresh_open_webui=true ;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*) die "unknown argument: $1" ;;
+	esac
+	shift
+done
 require_root
 require_command docker
 
@@ -33,12 +42,20 @@ mounted_volume="$(
 		2>/dev/null || true
 )"
 preserved_volume="${mounted_volume:-${volumes[0]:-open-webui-data}}"
+if "${fresh_open_webui}"; then
+	preserved_volume="ai-appliance-open-webui-data"
+	[[ "${preserved_volume}" != "${mounted_volume}" ]] ||
+		die "fresh Open WebUI volume collides with the legacy volume"
+fi
 
 log "Legacy running containers: ${legacy_running[*]:-(none)}"
 log "Open WebUI volumes: ${volumes[*]:-(none)}"
 log "Selected volume: ${preserved_volume}"
+if "${fresh_open_webui}"; then
+	log "Legacy Open WebUI volume retained: ${mounted_volume:-"(none detected)"}"
+fi
 if "${dry_run}"; then
-	"${SCRIPT_DIR}/install" --dry-run
+	"${SCRIPT_DIR}/install" --dry-run --open-webui-volume "${preserved_volume}"
 	exit 0
 fi
 
@@ -59,9 +76,7 @@ trap restore_legacy ERR
 for name in "${legacy_running[@]}"; do
 	docker stop "${name}" >/dev/null
 done
-"${SCRIPT_DIR}/install"
-sed -i.bak -E "s/^OPEN_WEBUI_VOLUME=.*/OPEN_WEBUI_VOLUME=${preserved_volume}/" "${DEPLOY_DIR}/.env"
-compose up -d --force-recreate --wait --wait-timeout 300 open-webui
+"${SCRIPT_DIR}/install" --open-webui-volume "${preserved_volume}"
 validate_deployment
 trap - ERR
 log "Migration validated. Backup: ${backup}"

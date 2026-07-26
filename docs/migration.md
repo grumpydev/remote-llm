@@ -9,6 +9,18 @@ sudo scripts/migrate --dry-run
 sudo scripts/migrate
 ```
 
+If the legacy Open WebUI database is not worth retaining, start with a clean
+appliance database while leaving the old Docker volume and migration backups
+untouched:
+
+```sh
+sudo scripts/migrate --dry-run --fresh-open-webui
+sudo scripts/migrate --fresh-open-webui
+```
+
+This uses the new `ai-appliance-open-webui-data` volume. It does not delete the
+detected legacy volume.
+
 The command inventories `open-webui`, `searxng`, `open-terminal`, and `litellm`,
 and volumes named `open-webui-data` or ending `_open-webui-data`. It prefers the
 volume actually mounted by `open-webui` at `/app/backend/data`.
@@ -41,4 +53,3 @@ scripts/doctor
 docker volume ls
 sudo ls -la /var/backups/ai-appliance
 ```
-

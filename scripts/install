@@ -8,6 +8,7 @@ source "${SCRIPT_DIR}/_common.sh"
 usage() {
 	cat <<'EOF'
 Usage: sudo scripts/install [--dry-run] [--deploy-dir PATH] [--admin-user USER]
+                            [--open-webui-volume VOLUME]
 
 Install or reconcile the appliance without deleting existing data. Generates
 missing secrets, detects Tailscale, creates the external Open WebUI volume,
@@ -17,6 +18,7 @@ EOF
 
 dry_run=false
 admin_user="${AI_ADMIN_USER:-}"
+open_webui_volume="${AI_OPEN_WEBUI_VOLUME:-}"
 while (($#)); do
 	case "$1" in
 	--dry-run) dry_run=true ;;
@@ -29,6 +31,11 @@ while (($#)); do
 		shift
 		[[ $# -gt 0 ]] || die "--admin-user needs a username"
 		admin_user="$1"
+		;;
+	--open-webui-volume)
+		shift
+		[[ $# -gt 0 ]] || die "--open-webui-volume needs a volume name"
+		open_webui_volume="$1"
 		;;
 	-h | --help)
 		usage
@@ -61,12 +68,17 @@ fi
 [[ "${admin_user}" != root ]] || die "the appliance administrator must not be root"
 getent passwd "${admin_user}" >/dev/null 2>&1 ||
 	die "administrator account does not exist: ${admin_user}"
+if [[ -n "${open_webui_volume}" ]]; then
+	[[ "${open_webui_volume}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] ||
+		die "unsafe Open WebUI volume name"
+fi
 
 if "${dry_run}"; then
 	log "DRY RUN: deploy ${REPO_ROOT} to ${DEPLOY_DIR}"
 	log "DRY RUN: grant appliance operator access to ${admin_user}"
 	log "DRY RUN: record server hostname ${appliance_hostname}"
 	log "DRY RUN: bind services to 127.0.0.1 and ${tailscale_ip}"
+	log "DRY RUN: use Open WebUI volume ${open_webui_volume:-open-webui-data}"
 	log "DRY RUN: create/preserve Open WebUI volume, render, start, validate"
 	exit 0
 fi
@@ -107,7 +119,7 @@ if [[ ! -f "${env_file}" ]]; then
 		printf 'LLAMA_API_KEY=%s\n' "${llama_key}"
 		printf 'WEBUI_SECRET_KEY=%s\n' "$(random_secret)"
 		printf 'SEARXNG_SECRET_KEY=%s\n' "$(random_secret)"
-		printf 'OPEN_WEBUI_VOLUME=open-webui-data\n'
+		printf 'OPEN_WEBUI_VOLUME=%s\n' "${open_webui_volume:-open-webui-data}"
 		printf 'AI_JOBS_ROOT=/srv/ai-jobs\nAI_SECRETS_DIR=%s\n' "${SECRETS_DIR}"
 		printf 'AI_APPLIANCE_GID=%s\n' "${appliance_gid}"
 		printf 'JOB_CPU_LIMIT=12\nJOB_MEMORY_LIMIT=24g\n'
@@ -124,6 +136,15 @@ else
 			printf '%s\n' "${setting}" >>"${env_file}"
 		fi
 	done
+	if [[ -n "${open_webui_volume}" ]]; then
+		if grep -q '^OPEN_WEBUI_VOLUME=' "${env_file}"; then
+			sed -i.bak -E \
+				"s/^OPEN_WEBUI_VOLUME=.*/OPEN_WEBUI_VOLUME=${open_webui_volume}/" \
+				"${env_file}"
+		else
+			printf 'OPEN_WEBUI_VOLUME=%s\n' "${open_webui_volume}" >>"${env_file}"
+		fi
+	fi
 	if grep -q '^AI_APPLIANCE_GID=' "${env_file}"; then
 		sed -i.bak -E "s/^AI_APPLIANCE_GID=.*/AI_APPLIANCE_GID=${appliance_gid}/" "${env_file}"
 	else
