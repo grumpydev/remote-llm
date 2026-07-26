@@ -138,6 +138,7 @@ grep -q 'BYPASS_WEB_SEARCH_WEB_LOADER: "true"' compose.yaml
 grep -q 'worker_compose --profile worker run -T --rm --no-deps' scripts/doctor
 grep -q 'LiteLLM authenticated chat completion' scripts/doctor
 grep -q -- '--models-max 1' native/run-llama-router
+grep -q 'router_help=' scripts/ai-model
 grep -q 'ln -sfn.*ai-model' scripts/install
 grep -q 'ln -sfn.*ai-opencode' scripts/install
 grep -q -- '--user' scripts/ai-opencode

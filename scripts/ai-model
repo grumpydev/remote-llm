@@ -181,7 +181,8 @@ enable)
 	require_command curl
 	require_command systemctl
 	[[ -x /usr/local/bin/llama-server ]] || die "native llama-server is missing"
-	/usr/local/bin/llama-server --help 2>&1 | grep -q -- '--models-preset' ||
+	router_help="$(/usr/local/bin/llama-server --help 2>&1 || true)"
+	grep -F -- '--models-preset' <<<"${router_help}" >/dev/null ||
 		die "installed llama-server does not support router mode; update llama.cpp first"
 	[[ -f "${DEPLOY_DIR}/.env" ]] || die "appliance is not installed"
 	if [[ -f "${DROP_IN}" ]]; then
