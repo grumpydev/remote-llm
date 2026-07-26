@@ -38,6 +38,17 @@ llama.cpp must listen on an address reachable through the Docker host gateway,
 not exclusively on a namespace-inaccessible loopback. Prefer firewalling that
 provider path over publishing port 8080 to clients.
 
+If native requests work but LiteLLM reports a connection timeout to
+`host.docker.internal:8080`, inspect the appliance bridge and its UFW rule:
+
+```bash
+network_id="$(sudo docker network inspect ai-appliance_internal --format '{{.Id}}')"
+bridge="br-${network_id:0:12}"
+sudo ufw status | grep -F "${bridge}"
+```
+
+Rerunning `sudo scripts/install` reconciles the bridge-scoped port 8080 rule.
+
 ## Open WebUI cannot see the model
 
 Check LiteLLM first, then the container-network check in doctor. Open WebUI
@@ -111,4 +122,3 @@ systemctl status ai-poweroff-check.timer
 
 A failed required push, running job, inhibit file, unelapsed delay, missing
 metadata, or metadata mismatch blocks shutdown by design.
-
