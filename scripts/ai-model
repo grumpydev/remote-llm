@@ -1,0 +1,324 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${SELF}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+
+CATALOGUE="${SECRETS_DIR}/llama-models.json"
+PRESET="/etc/llama-server.models.ini"
+DROP_IN_DIR="/etc/systemd/system/llama-server.service.d"
+DROP_IN="${DROP_IN_DIR}/50-ai-appliance-router.conf"
+RUNNER="/usr/local/sbin/run-ai-appliance-llama-router"
+
+usage() {
+	cat <<'EOF'
+Usage:
+  sudo ai-model enable
+  ai-model list
+  sudo ai-model add --alias NAME --source OWNER/REPO:QUANT
+                    [--display-name NAME] [--context TOKENS]
+                    [--output-tokens TOKENS] [--gpu-layers N]
+                    [--no-flash-attention]
+  sudo ai-model remove --alias NAME
+  ai-model status
+
+Router mode keeps every registered model selectable while limiting llama.cpp
+to one loaded model at a time. Adding downloads the requested Hugging Face
+quantization into llama.cpp's cache before publishing the alias.
+EOF
+}
+
+read_key() {
+	[[ -r /etc/llama-server.api-key ]] || die "cannot read /etc/llama-server.api-key"
+	tr -d '\r\n' </etc/llama-server.api-key
+}
+
+render_preset() {
+	"${DEPLOY_DIR}/scripts/router-config" \
+		--catalogue "${CATALOGUE}" \
+		--output "${PRESET}" render
+	chgrp ai-appliance "${CATALOGUE}"
+	chmod 0640 "${CATALOGUE}"
+	chgrp llama "${PRESET}"
+	chmod 0640 "${PRESET}"
+}
+
+wait_for_router() {
+	local key="$1"
+	local attempt=1
+	while ((attempt <= 60)); do
+		if curl -fsS --max-time 5 \
+			-H "Authorization: Bearer ${key}" \
+			"http://127.0.0.1:8080/models?reload=1" >/dev/null 2>&1; then
+			return 0
+		fi
+		sleep 2
+		attempt=$((attempt + 1))
+	done
+	journalctl -u llama-server.service -n 100 --no-pager >&2 || true
+	die "llama.cpp router did not become ready"
+}
+
+model_is_cached() {
+	local key="$1"
+	local source="$2"
+	curl -fsS --max-time 10 \
+		-H "Authorization: Bearer ${key}" \
+		"http://127.0.0.1:8080/models?reload=1" |
+		python3 -c \
+			"import json,sys; source=sys.argv[1]; raise SystemExit(0 if any(item.get('id') == source for item in json.load(sys.stdin).get('data', [])) else 1)" \
+			"${source}"
+}
+
+download_model() {
+	local key="$1"
+	local source="$2"
+	if model_is_cached "${key}" "${source}"; then
+		log "Model is already present in the llama.cpp cache: ${source}"
+		return 0
+	fi
+	log "Downloading ${source} into the llama.cpp cache..."
+	curl --fail-with-body --silent --show-error --max-time 30 \
+		-H "Authorization: Bearer ${key}" \
+		-H 'Content-Type: application/json' \
+		-X POST http://127.0.0.1:8080/models \
+		-d "{\"model\":\"${source}\"}" >/dev/null
+	local attempt=1
+	while ((attempt <= 720)); do
+		if model_is_cached "${key}" "${source}"; then
+			log "Download complete: ${source}"
+			return 0
+		fi
+		if ((attempt % 6 == 0)); then
+			log "Still downloading ${source}..."
+		fi
+		sleep 5
+		attempt=$((attempt + 1))
+	done
+	die "model download did not complete within one hour"
+}
+
+restart_gateway() {
+	"${DEPLOY_DIR}/scripts/render-config" \
+		--env-file "${DEPLOY_DIR}/.env" \
+		--output "${DEPLOY_DIR}/runtime"
+	compose config --quiet
+	compose up -d --no-deps litellm
+}
+
+add_route() {
+	local alias="$1"
+	local source="$2"
+	local display_name="$3"
+	local context="$4"
+	local output="$5"
+	"${DEPLOY_DIR}/scripts/model-config" \
+		--registry "${DEPLOY_DIR}/config/litellm/models.json" \
+		add \
+		--alias "${alias}" \
+		--provider-model "openai/${source}" \
+		--api-base http://host.docker.internal:8080/v1 \
+		--api-key-env LLAMA_API_KEY \
+		--timeout 900 \
+		--max-retries 1 \
+		--display-name "${display_name}" \
+		--context "${context}" \
+		--output "${output}" >/dev/null
+}
+
+catalogue_row() {
+	local alias="$1"
+	python3 - "${CATALOGUE}" "${alias}" <<'PY'
+import json
+import sys
+
+models = json.load(open(sys.argv[1], encoding="utf-8"))
+model = next((item for item in models if item["alias"] == sys.argv[2]), None)
+if model is None:
+    raise SystemExit(1)
+print("\t".join([
+    model["alias"],
+    model["source"],
+    model.get("display_name", model["alias"]),
+    str(model.get("context", 32768)),
+    str(model.get("output", 16384)),
+]))
+PY
+}
+
+command="${1:-}"
+[[ -n "${command}" ]] || {
+	usage
+	exit 2
+}
+shift
+
+case "${command}" in
+-h | --help | help)
+	usage
+	;;
+list)
+	[[ $# -eq 0 ]] || die "list takes no arguments"
+	[[ -f "${CATALOGUE}" ]] || die "router is not enabled; run: sudo ai-model enable"
+	"${DEPLOY_DIR}/scripts/router-config" --catalogue "${CATALOGUE}" list
+	;;
+status)
+	[[ $# -eq 0 ]] || die "status takes no arguments"
+	if [[ -f "${DROP_IN}" && -f "${CATALOGUE}" ]]; then
+		log "Router: enabled"
+		systemctl --no-pager --full status llama-server.service || true
+		log "Models:"
+		"${DEPLOY_DIR}/scripts/router-config" --catalogue "${CATALOGUE}" list
+	else
+		log "Router: disabled"
+		systemctl --no-pager --full status llama-server.service || true
+	fi
+	;;
+enable)
+	require_root
+	[[ $# -eq 0 ]] || die "enable takes no arguments"
+	require_command curl
+	require_command systemctl
+	[[ -x /usr/local/bin/llama-server ]] || die "native llama-server is missing"
+	/usr/local/bin/llama-server --help 2>&1 | grep -q -- '--models-preset' ||
+		die "installed llama-server does not support router mode; update llama.cpp first"
+	[[ -f "${DEPLOY_DIR}/.env" ]] || die "appliance is not installed"
+	if [[ -f "${DROP_IN}" ]]; then
+		log "llama.cpp router is already enabled."
+		exit 0
+	fi
+	install -d -m 0750 -g ai-appliance "${SECRETS_DIR}"
+	install -m 0640 -g ai-appliance \
+		"${DEPLOY_DIR}/config/llama/models.json" "${CATALOGUE}"
+	render_preset
+	install -m 0755 "${DEPLOY_DIR}/native/run-llama-router" "${RUNNER}"
+	install -d -m 0755 "${DROP_IN_DIR}"
+	install -m 0644 "${DEPLOY_DIR}/systemd/llama-server-router.conf" "${DROP_IN}"
+	registry_backup="$(mktemp)"
+	cp "${DEPLOY_DIR}/config/litellm/models.json" "${registry_backup}"
+	rollback_enable() {
+		cp "${registry_backup}" "${DEPLOY_DIR}/config/litellm/models.json"
+		rm -f -- "${DROP_IN}"
+		systemctl daemon-reload || true
+		systemctl restart llama-server.service || true
+		restart_gateway || true
+		rm -f -- "${registry_backup}"
+	}
+	trap rollback_enable ERR
+	systemctl daemon-reload
+	systemctl restart llama-server.service
+	key="$(read_key)"
+	wait_for_router "${key}"
+	while IFS=$'\t' read -r alias source display context output; do
+		add_route "${alias}" "${source}" "${display}" "${context}" "${output}"
+	done < <(
+		python3 - "${CATALOGUE}" <<'PY'
+import json
+import sys
+for model in json.load(open(sys.argv[1], encoding="utf-8")):
+    print("\t".join([
+        model["alias"], model["source"], model.get("display_name", model["alias"]),
+        str(model.get("context", 32768)), str(model.get("output", 16384)),
+    ]))
+PY
+	)
+	restart_gateway
+	"${DEPLOY_DIR}/scripts/doctor" --runtime-only
+	rm -f -- "${registry_backup}"
+	trap - ERR
+	log "Model router enabled. One model will be loaded at a time."
+	;;
+add)
+	require_root
+	[[ -f "${DROP_IN}" && -f "${CATALOGUE}" ]] ||
+		die "router is not enabled; run: sudo ai-model enable"
+	catalogue_backup="$(mktemp)"
+	registry_backup="$(mktemp)"
+	cp "${CATALOGUE}" "${catalogue_backup}"
+	cp "${DEPLOY_DIR}/config/litellm/models.json" "${registry_backup}"
+	restore_add() {
+		cp "${catalogue_backup}" "${CATALOGUE}"
+		cp "${registry_backup}" "${DEPLOY_DIR}/config/litellm/models.json"
+		render_preset || true
+		systemctl restart llama-server.service || true
+		restart_gateway || true
+		rm -f -- "${catalogue_backup}" "${registry_backup}"
+	}
+	trap restore_add ERR
+	source=""
+	previous=""
+	for argument in "$@"; do
+		if [[ "${previous}" == "--source" ]]; then
+			source="${argument}"
+			break
+		fi
+		previous="${argument}"
+	done
+	[[ -n "${source}" ]] || die "--source is required"
+	[[ "${source}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}/[A-Za-z0-9][A-Za-z0-9._-]{0,191}:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] ||
+		die "source must be OWNER/REPOSITORY:QUANT"
+	download_model "$(read_key)" "${source}"
+	"${DEPLOY_DIR}/scripts/router-config" \
+		--catalogue "${CATALOGUE}" \
+		add "$@" >/dev/null
+	render_preset
+	alias=""
+	previous=""
+	for argument in "$@"; do
+		if [[ "${previous}" == "--alias" ]]; then
+			alias="${argument}"
+			break
+		fi
+		previous="${argument}"
+	done
+	[[ -n "${alias}" ]] || die "--alias is required"
+	IFS=$'\t' read -r alias source display context output < <(catalogue_row "${alias}")
+	add_route "${alias}" "${source}" "${display}" "${context}" "${output}"
+	systemctl restart llama-server.service
+	wait_for_router "$(read_key)"
+	restart_gateway
+	rm -f -- "${catalogue_backup}" "${registry_backup}"
+	trap - ERR
+	log "Added ${alias}. Select it in Open WebUI or run: ai-opencode --model ${alias}"
+	log "Its first request will load ${source} into VRAM."
+	;;
+remove)
+	require_root
+	[[ -f "${DROP_IN}" && -f "${CATALOGUE}" ]] ||
+		die "router is not enabled; run: sudo ai-model enable"
+	[[ ${1:-} == "--alias" && -n ${2:-} && $# -eq 2 ]] ||
+		die "expected --alias NAME"
+	alias="$2"
+	catalogue_backup="$(mktemp)"
+	registry_backup="$(mktemp)"
+	cp "${CATALOGUE}" "${catalogue_backup}"
+	cp "${DEPLOY_DIR}/config/litellm/models.json" "${registry_backup}"
+	restore_remove() {
+		cp "${catalogue_backup}" "${CATALOGUE}"
+		cp "${registry_backup}" "${DEPLOY_DIR}/config/litellm/models.json"
+		render_preset || true
+		systemctl restart llama-server.service || true
+		restart_gateway || true
+		rm -f -- "${catalogue_backup}" "${registry_backup}"
+	}
+	trap restore_remove ERR
+	"${DEPLOY_DIR}/scripts/router-config" \
+		--catalogue "${CATALOGUE}" remove --alias "${alias}" >/dev/null
+	"${DEPLOY_DIR}/scripts/model-config" \
+		--registry "${DEPLOY_DIR}/config/litellm/models.json" \
+		remove --alias "${alias}" >/dev/null
+	render_preset
+	systemctl restart llama-server.service
+	wait_for_router "$(read_key)"
+	restart_gateway
+	rm -f -- "${catalogue_backup}" "${registry_backup}"
+	trap - ERR
+	log "Removed ${alias} from the selectable catalogue."
+	log "Cached GGUF data was retained."
+	;;
+*)
+	usage >&2
+	exit 2
+	;;
+esac

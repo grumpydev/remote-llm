@@ -69,7 +69,8 @@ if [[ -f "${DEPLOY_DIR}/.env" ]]; then
 	tailscale_ip="$(sed -n 's/^TAILSCALE_IP=//p' "${DEPLOY_DIR}/.env")"
 	if [[ -n "${llama_key}" ]]; then pass "deployed llama.cpp key readable"; else fail "deployed llama.cpp key unreadable"; fi
 	if curl -fsS --max-time 5 -H "Authorization: Bearer ${llama_key}" \
-		http://127.0.0.1:8080/v1/models 2>/dev/null | grep -q 'glm-4.7-flash'; then
+		http://127.0.0.1:8080/v1/models 2>/dev/null |
+		python3 -c "import json,sys; assert json.load(sys.stdin).get('data')" 2>/dev/null; then
 		pass "llama.cpp model endpoint"
 	else
 		fail "llama.cpp endpoint/model unavailable"

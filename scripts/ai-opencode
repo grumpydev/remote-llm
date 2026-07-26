@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${SELF}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+
+usage() {
+	cat <<'EOF'
+Usage: ai-opencode [--model NAME] [PATH] [-- OPENCODE_ARGS...]
+
+Open OpenCode against PATH (the current directory by default) using the pinned
+appliance worker. Only that directory is mounted into the container.
+EOF
+}
+
+workspace="${PWD}"
+workspace_set=false
+model=""
+opencode_args=()
+while (($#)); do
+	case "$1" in
+	--model)
+		shift
+		[[ $# -gt 0 ]] || die "--model needs a name"
+		model="$1"
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	--)
+		shift
+		opencode_args=("$@")
+		break
+		;;
+	-*) die "unknown launcher argument: $1 (put OpenCode arguments after --)" ;;
+	*)
+		! "${workspace_set}" || die "only one workspace path may be supplied"
+		workspace="$1"
+		workspace_set=true
+		;;
+	esac
+	shift
+done
+
+require_command docker
+docker compose version >/dev/null
+[[ -d "${workspace}" ]] || die "workspace is not a directory: ${workspace}"
+workspace="$(cd -- "${workspace}" && pwd -P)"
+[[ "${workspace}" != *:* && "${workspace}" != *$'\n'* ]] ||
+	die "workspace path contains unsupported characters"
+[[ -f "${DEPLOY_DIR}/runtime/opencode/opencode.json" ]] ||
+	die "OpenCode runtime configuration is missing; run: sudo scripts/install"
+
+if [[ -n "${model}" ]]; then
+	[[ "${model}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || die "unsafe model name"
+	opencode_args=(--model "appliance/${model}" "${opencode_args[@]}")
+fi
+
+worker_compose --profile worker run --rm --no-deps \
+	-v "${workspace}:/workspace:rw" \
+	opencode-worker shell opencode "${opencode_args[@]}"

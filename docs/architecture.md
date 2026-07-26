@@ -51,7 +51,10 @@ clone repositories, install packages, and retrieve documentation.
 - `/etc/ai-appliance`: root-owned secrets and repository allow-list.
 - `/srv/ai-jobs`: queue, workspaces, cache, and terminal job artifacts.
 - `/var/backups/ai-appliance`: sensitive backups; root-readable only.
-- `/usr/local/bin/llama-server` and its systemd unit: explicitly out of scope.
+- `/usr/local/bin/llama-server`: externally maintained and never replaced.
+- `llama-server.service`: left untouched by installation and migration; the
+  explicit `ai-model enable` action adds only an appliance-owned router
+  `ExecStart` drop-in.
 
 Tailscale limits network reachability but does not replace LiteLLM authentication
 or Open WebUI accounts. Repository contents, dependency installers, tests, and

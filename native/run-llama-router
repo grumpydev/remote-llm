@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+LLAMA_SERVER_BIN="${LLAMA_SERVER_BIN:-/usr/local/bin/llama-server}"
+LLAMA_MODELS_PRESET="${LLAMA_MODELS_PRESET:-/etc/llama-server.models.ini}"
+LLAMA_API_KEY_FILE="${LLAMA_API_KEY_FILE:-/etc/llama-server.api-key}"
+
+[[ -x "${LLAMA_SERVER_BIN}" ]] || {
+	printf 'ERROR: llama-server is not executable: %s\n' "${LLAMA_SERVER_BIN}" >&2
+	exit 1
+}
+[[ -r "${LLAMA_MODELS_PRESET}" ]] || {
+	printf 'ERROR: model preset is unreadable: %s\n' "${LLAMA_MODELS_PRESET}" >&2
+	exit 1
+}
+[[ -r "${LLAMA_API_KEY_FILE}" ]] || {
+	printf 'ERROR: API key file is unreadable: %s\n' "${LLAMA_API_KEY_FILE}" >&2
+	exit 1
+}
+
+exec "${LLAMA_SERVER_BIN}" \
+	--host 0.0.0.0 \
+	--port 8080 \
+	--api-key-file "${LLAMA_API_KEY_FILE}" \
+	--models-preset "${LLAMA_MODELS_PRESET}" \
+	--models-max 1 \
+	--models-autoload

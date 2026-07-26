@@ -72,6 +72,16 @@ def main() -> int:
         ],
         check=True,
     )
+    subprocess.run(
+        [
+            str(ROOT / "scripts/opencode-config"),
+            "--registry",
+            str(ROOT / "config/litellm/models.json"),
+            "--output",
+            str(args.output / "opencode/opencode.json"),
+        ],
+        check=True,
+    )
     models = json.loads((ROOT / "config/litellm/models.json").read_text(encoding="utf-8"))
     provider_lines: list[str] = []
     for model in models:
@@ -89,6 +99,9 @@ def main() -> int:
     for path in args.output.rglob("*"):
         if path.is_file():
             path.chmod(0o600)
+    # This generated file contains only provider placeholders and model
+    # metadata. The non-root OpenCode container must be able to read it.
+    (args.output / "opencode/opencode.json").chmod(0o644)
 
     # The installer runs this renderer as root. SearXNG's entrypoint starts as
     # root but its application worker reads settings.yml as uid/gid 977.

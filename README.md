@@ -73,6 +73,39 @@ sudo scripts/run-next-job
 A push targets only `HEAD:refs/heads/<work_branch>` and never merges or
 force-pushes. See [batch jobs](docs/batch-jobs.md).
 
+## Models and interactive OpenCode
+
+After installation, enable llama.cpp router mode once:
+
+```bash
+sudo ai-model enable
+```
+
+Add a Hugging Face GGUF quantization and keep it selectable alongside the
+default model:
+
+```bash
+sudo ai-model add \
+  --alias qwen-coder \
+  --source owner/model-GGUF:Q4_K_M \
+  --context 32768
+```
+
+The router keeps at most one model loaded at a time. Choosing another alias in
+Open WebUI or OpenCode replaces the model occupying VRAM; catalogue entries and
+cached model files remain available. `ai-model add` waits for llama.cpp's model
+download to finish before exposing the new alias.
+
+Run interactive OpenCode in the current repository:
+
+```bash
+ai-opencode .
+ai-opencode --model qwen-coder .
+```
+
+Only the selected directory is writable inside the worker. See
+[model routing](docs/models.md) and [batch jobs](docs/batch-jobs.md).
+
 ## Operations
 
 ```bash
@@ -85,6 +118,8 @@ sudo scripts/restore /var/backups/ai-appliance/<timestamp>
 sudo scripts/rollback
 sudo scripts/add-model --help
 sudo scripts/remove-model --help
+ai-model --help
+ai-opencode --help
 make test
 ```
 

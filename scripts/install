@@ -101,6 +101,13 @@ if [[ -n "${preserved_models}" ]]; then
 	rm -f -- "${preserved_models}"
 fi
 
+ln -sfn "${DEPLOY_DIR}/scripts/ai-model" /usr/local/bin/ai-model
+ln -sfn "${DEPLOY_DIR}/scripts/ai-opencode" /usr/local/bin/ai-opencode
+if [[ -f /etc/systemd/system/llama-server.service.d/50-ai-appliance-router.conf ]]; then
+	install -m 0755 "${DEPLOY_DIR}/native/run-llama-router" \
+		/usr/local/sbin/run-ai-appliance-llama-router
+fi
+
 env_file="${DEPLOY_DIR}/.env"
 if [[ ! -f "${env_file}" ]]; then
 	litellm_key="sk-$(random_secret)"

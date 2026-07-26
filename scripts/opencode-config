@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+"""Render OpenCode's provider catalogue from the LiteLLM model registry."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def atomic_json(path: Path, value: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=path.name, dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, indent=2)
+            handle.write("\n")
+        os.chmod(name, 0o600)
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--registry", type=Path, default=ROOT / "config/litellm/models.json")
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--default-model")
+    args = parser.parse_args()
+
+    models = json.loads(args.registry.read_text(encoding="utf-8"))
+    if not isinstance(models, list) or not models:
+        raise ValueError("model registry must be a non-empty array")
+    aliases = [str(model["alias"]) for model in models]
+    default_model = args.default_model or aliases[0]
+    if default_model not in aliases:
+        raise ValueError(f"default model is not registered: {default_model}")
+
+    rendered_models: dict[str, object] = {}
+    for model in models:
+        alias = str(model["alias"])
+        rendered_models[alias] = {
+            "name": str(model.get("display_name", alias)),
+            "limit": {
+                "context": int(model.get("context", 65536)),
+                "output": int(model.get("output", 16384)),
+            },
+        }
+
+    config = {
+        "$schema": "https://opencode.ai/config.json",
+        "model": f"appliance/{default_model}",
+        "provider": {
+            "appliance": {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "AI Appliance LiteLLM",
+                "options": {
+                    "baseURL": "{env:LITELLM_BASE_URL}",
+                    "apiKey": "{env:LITELLM_MASTER_KEY}",
+                    "timeout": 900000,
+                },
+                "models": rendered_models,
+            }
+        },
+        "permission": {
+            "*": "allow",
+            "external_directory": "deny",
+            "question": "deny",
+            "task": "deny",
+            "doom_loop": "deny",
+        },
+    }
+    atomic_json(args.output, config)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

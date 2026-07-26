@@ -7,10 +7,12 @@ source "${SCRIPT_DIR}/_common.sh"
 usage() {
 	cat <<'EOF'
 Usage: sudo scripts/add-model --alias NAME --provider-model MODEL \
-  --api-base URL --api-key-env ENV [--timeout SECONDS] [--max-retries N]
+  --api-base URL --api-key-env ENV [--timeout SECONDS] [--max-retries N] \
+  [--display-name NAME] [--context TOKENS] [--output TOKENS]
 
 The API key itself must already be present in the root-owned deployment .env.
 Only the environment variable name is stored in the model registry.
+For native GGUF models, prefer the higher-level `sudo ai-model add` command.
 EOF
 }
 [[ ${1:-} != "-h" && ${1:-} != "--help" ]] || {

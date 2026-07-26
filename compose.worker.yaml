@@ -22,6 +22,7 @@ x-worker: &worker
     npm_config_cache: /cache/npm
     GIT_TERMINAL_PROMPT: "0"
   volumes:
+    - ./runtime/opencode/opencode.json:/opt/opencode/opencode.json:ro
     - ${AI_JOBS_ROOT:-/srv/ai-jobs}/shared-cache:/cache:rw
     - ${AI_SECRETS_DIR:-/etc/ai-appliance}/known_hosts:/run/secrets/known_hosts:ro
     - ${AI_SECRETS_DIR:-/etc/ai-appliance}/git_deploy_key:/run/secrets/git_deploy_key:ro

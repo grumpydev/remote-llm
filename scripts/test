@@ -65,13 +65,19 @@ python3 -m unittest discover -s tests -v
 test_env="$(mktemp)"
 runtime_dir="$(mktemp -d)"
 compose_override="$(mktemp)"
-trap 'rm -f -- "${test_env}" "${compose_override}"; rm -rf -- "${runtime_dir}"' EXIT
+router_catalogue="$(mktemp)"
+router_preset="$(mktemp)"
+trap 'rm -f -- "${test_env}" "${compose_override}" "${router_catalogue}" "${router_preset}"; rm -rf -- "${runtime_dir}"' EXIT
 sed \
 	-e 's/^TAILSCALE_IP=.*/TAILSCALE_IP=100.64.0.10/' \
 	-e 's/CHANGE_ME/0123456789abcdef0123456789abcdef/g' \
 	.env.example >"${test_env}"
 scripts/render-config --env-file "${test_env}" --output "${runtime_dir}"
 grep -q '^LLAMA_API_KEY=' "${runtime_dir}/litellm/provider.env"
+python3 -m json.tool "${runtime_dir}/opencode/opencode.json" >/dev/null
+grep -q '"glm-4.7-flash"' "${runtime_dir}/opencode/opencode.json"
+[[ "$(stat -c '%a' "${runtime_dir}/opencode/opencode.json" 2>/dev/null ||
+	stat -f '%Lp' "${runtime_dir}/opencode/opencode.json")" == 644 ]]
 [[ "$(stat -c '%a' "${runtime_dir}/searxng/settings.yml" 2>/dev/null ||
 	stat -f '%Lp' "${runtime_dir}/searxng/settings.yml")" == 600 ]]
 if [[ "${EUID}" -eq 0 ]]; then
@@ -93,6 +99,28 @@ docker compose --env-file versions.env --env-file "${test_env}" \
 	-f compose.yaml -f compose.worker.yaml -f "${compose_override}" \
 	--profile worker config --quiet
 
+cp config/llama/models.json "${router_catalogue}"
+scripts/router-config --catalogue "${router_catalogue}" \
+	add --alias test-coder --source example/test-coder-GGUF:Q4_K_M \
+	--display-name "Test Coder" --context 8192 --output-tokens 2048 >/dev/null
+scripts/router-config --catalogue "${router_catalogue}" \
+	--output "${router_preset}" render
+grep -q '^\[example/test-coder-GGUF:Q4_K_M\]$' "${router_preset}"
+grep -q '^hf-repo = example/test-coder-GGUF:Q4_K_M$' "${router_preset}"
+grep -q '^ctx-size = 8192$' "${router_preset}"
+scripts/router-config --catalogue "${router_catalogue}" \
+	remove --alias test-coder >/dev/null
+if scripts/router-config --catalogue "${router_catalogue}" \
+	remove --alias glm-4.7-flash >/dev/null 2>&1; then
+	printf 'ERROR: router allowed removal of the default model.\n' >&2
+	exit 1
+fi
+if scripts/router-config --catalogue "${router_catalogue}" \
+	add --alias unsafe --source ../model:Q4_K_M >/dev/null 2>&1; then
+	printf 'ERROR: router accepted an unsafe model source.\n' >&2
+	exit 1
+fi
+
 grep -q 'http://127.0.0.1:8080/healthz' compose.yaml
 if rg -n 'healthcheck:|test:' compose.yaml -A2 |
 	grep -q '/search?'; then
@@ -109,6 +137,9 @@ grep -q '^[[:space:]]*- DAC_READ_SEARCH$' compose.yaml
 grep -q 'BYPASS_WEB_SEARCH_WEB_LOADER: "true"' compose.yaml
 grep -q 'worker_compose --profile worker run -T --rm --no-deps' scripts/doctor
 grep -q 'LiteLLM authenticated chat completion' scripts/doctor
+grep -q -- '--models-max 1' native/run-llama-router
+grep -q 'ln -sfn.*ai-model' scripts/install
+grep -q 'ln -sfn.*ai-opencode' scripts/install
 
 if rg -n 'image:.*:(latest|main)([[:space:]]|$)' compose.yaml compose.worker.yaml; then
 	printf 'ERROR: moving image tag found.\n' >&2
