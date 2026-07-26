@@ -7,7 +7,6 @@ x-worker: &worker
       NODE_IMAGE: ${NODE_IMAGE}
       OPENCODE_VERSION: ${OPENCODE_VERSION}
   image: ai-appliance/opencode-worker:${OPENCODE_VERSION}
-  init: true
   user: "1000:1000"
   group_add:
     - "${AI_APPLIANCE_GID}"
