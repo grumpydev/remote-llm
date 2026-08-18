@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ai_appliance.power_relay import Config, magic_packet
+from ai_appliance.power_relay import Config, Relay, magic_packet
 
 
 class PowerRelayTests(unittest.TestCase):
@@ -38,6 +38,31 @@ class PowerRelayTests(unittest.TestCase):
             self.assertEqual(config.target_host, "ai-server")
             self.assertEqual(config.token, "a" * 64)
             self.assertEqual(config.target_mac, "00:11:22:33:44:55")
+            self.assertEqual(config.ssh_port, 2222)
+
+    def test_shutdown_uses_dedicated_openssh_port(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            known_hosts = root / "known_hosts"
+            known_hosts.write_text("pinned\n", encoding="utf-8")
+            config = Config(
+                listen_host="100.64.0.2",
+                port=8099,
+                token="a" * 64,
+                target_mac="00:11:22:33:44:55",
+                target_host="ai-server",
+                broadcast="192.168.1.255",
+                litellm_port=4000,
+                litellm_key="key",
+                ssh_user="ai-power-relay",
+                ssh_key=root / "id",
+                known_hosts=known_hosts,
+            )
+            with patch("ai_appliance.power_relay.subprocess.run") as run:
+                run.return_value.returncode = 0
+                Relay(config).shutdown()
+            command = run.call_args.args[0]
+            self.assertEqual(command[command.index("-p") + 1], "2222")
 
     def test_rejects_unsafe_target_host(self) -> None:
         config = Config(

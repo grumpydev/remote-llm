@@ -11,6 +11,13 @@ command creates the same delayed shutdown request consumed by the batch-worker
 poweroff timer, so running jobs and `/etc/ai-appliance/no-poweroff` inhibit both
 remote and batch shutdown.
 
+If Tailscale SSH is enabled, it [owns port 22 on the Tailscale
+address](https://tailscale.com/docs/features/tailscale-ssh) and does not consult
+OpenSSH `authorized_keys`. Authorization therefore configures
+Tailscale Serve to forward tailnet-only TCP port 2222 to the host's standard
+OpenSSH port 22. The relay uses port 2222, where the pinned host key and forced
+command are enforced, while normal Tailscale SSH remains unchanged.
+
 ## Firmware and Ethernet prerequisites
 
 On the AI machine, enable settings commonly named **Wake on LAN**, **Power on by

@@ -22,6 +22,7 @@ litellm_key_file=""
 host_key_file=""
 admin_user="${SUDO_USER:-}"
 port=8099
+shutdown_ssh_port=2222
 while (($#)); do
 	case "$1" in
 	--target-mac)
@@ -105,7 +106,8 @@ if [[ -n "${host_key_file}" ]]; then
 	[[ -r "${host_key_file}" ]] || die "--host-key-file is unreadable"
 	host_key="$(tr -d '\r\n' <"${host_key_file}")"
 	[[ "${host_key}" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+([[:space:]].*)?$ ]] || die "invalid server host key"
-	printf '%s %s\n' "${target_host}" "${host_key}" >"${known_hosts}"
+	printf '[%s]:%s %s\n' "${target_host}" "${shutdown_ssh_port}" \
+		"${host_key}" >"${known_hosts}"
 fi
 chown root:"${group}" "${token_file}" "${litellm_target}" "${known_hosts}"
 chmod 0640 "${token_file}" "${litellm_target}" "${known_hosts}"
@@ -124,6 +126,7 @@ AI_MODEL_READY_TIMEOUT=900
 AI_TARGET_LITELLM_PORT=4000
 AI_TARGET_LITELLM_KEY_FILE=${litellm_target}
 AI_SHUTDOWN_SSH_USER=ai-power-relay
+AI_SHUTDOWN_SSH_PORT=${shutdown_ssh_port}
 AI_SHUTDOWN_SSH_KEY=${key_file}
 AI_SHUTDOWN_KNOWN_HOSTS=${known_hosts}
 EOF

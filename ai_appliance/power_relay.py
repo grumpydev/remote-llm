@@ -38,6 +38,7 @@ class Config:
     ssh_key: Path
     known_hosts: Path
     model_ready_timeout: int = 900
+    ssh_port: int = 2222
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -58,6 +59,7 @@ class Config:
             ssh_key=Path(os.environ["AI_SHUTDOWN_SSH_KEY"]),
             known_hosts=Path(os.environ["AI_SHUTDOWN_KNOWN_HOSTS"]),
             model_ready_timeout=int(os.environ.get("AI_MODEL_READY_TIMEOUT", "900")),
+            ssh_port=int(os.environ.get("AI_SHUTDOWN_SSH_PORT", "2222")),
         )
         config.validate()
         return config
@@ -65,7 +67,11 @@ class Config:
     def validate(self) -> None:
         ipaddress.ip_address(self.listen_host)
         ipaddress.ip_address(self.broadcast)
-        if not 1024 <= self.port <= 65535 or not 1 <= self.litellm_port <= 65535:
+        if (
+            not 1024 <= self.port <= 65535
+            or not 1 <= self.litellm_port <= 65535
+            or not 1024 <= self.ssh_port <= 65535
+        ):
             raise ValueError("invalid port")
         if not 1 <= self.model_ready_timeout <= 3600:
             raise ValueError("invalid model readiness timeout")
@@ -188,6 +194,8 @@ class Relay:
             "-T",
             "-i",
             str(self.config.ssh_key),
+            "-p",
+            str(self.config.ssh_port),
             "-o",
             "BatchMode=yes",
             "-o",

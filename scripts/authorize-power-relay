@@ -8,6 +8,7 @@ source "${SCRIPT_DIR}/_common.sh"
 	die "Usage: sudo scripts/authorize-power-relay --key-file PATH"
 require_root
 require_command ssh-keygen
+require_command tailscale
 require_command visudo
 [[ -s /etc/ssh/ssh_host_ed25519_key.pub ]] || die "server has no Ed25519 SSH host public key"
 key="$(tr -d '\r\n' <"$2")"
@@ -35,6 +36,8 @@ ${user} ALL=(root) NOPASSWD: ${DEPLOY_DIR}/scripts/request-poweroff --source rel
 EOF
 chmod 0440 /etc/sudoers.d/ai-power-relay
 visudo -cf /etc/sudoers.d/ai-power-relay >/dev/null
+tailscale serve --bg --tcp 2222 22 >/dev/null
 printf 'Relay key authorized with a forced poweroff-request command only.\n'
+printf 'Standard OpenSSH exposed to the tailnet on dedicated TCP port 2222.\n'
 printf 'Copy this host key to the NUC installer with --host-key-file:\n'
 cat /etc/ssh/ssh_host_ed25519_key.pub
