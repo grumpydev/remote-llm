@@ -28,6 +28,10 @@ exposure.
   from images/jobs, and redacted from captured output.
 - Poweroff requires runner-produced terminal metadata, successful required push,
   an empty running queue, elapsed delay, and no inhibit file.
+- The optional NUC power relay binds only to its detected Tailscale address and
+  requires a random bearer token for every action/status request. Shutdown uses
+  a pinned SSH host key and a dedicated public key restricted server-side to a
+  single forced request command; it cannot create a general SSH session.
 - Backups are mode 0700 and must be encrypted off-host.
 
 ## Residual risk
@@ -49,4 +53,3 @@ Open WebUI may retrieve page content from result URLs. Internal SearXNG does not
 make arbitrary page-content retrieval internal or trusted. Retrieved pages can
 contain prompt injection; keep SSRF protections enabled and treat cited content
 as untrusted.
-

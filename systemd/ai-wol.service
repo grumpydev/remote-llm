@@ -1,0 +1,15 @@
+[Unit]
+Description=Enable Wake-on-LAN for the configured AI appliance NIC
+After=network-pre.target
+Before=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ai-enable-wol
+RemainAfterExit=yes
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

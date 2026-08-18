@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+
+[[ ${1:-} == --key-file && -n ${2:-} && $# -eq 2 ]] ||
+	die "Usage: sudo scripts/authorize-power-relay --key-file PATH"
+require_root
+require_command ssh-keygen
+require_command visudo
+[[ -s /etc/ssh/ssh_host_ed25519_key.pub ]] || die "server has no Ed25519 SSH host public key"
+key="$(tr -d '\r\n' <"$2")"
+[[ "${key}" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+([[:space:]].*)?$ ]] || die "expected one Ed25519 public key"
+user="ai-power-relay"
+getent passwd "${user}" >/dev/null 2>&1 || useradd --system --create-home --shell /bin/sh "${user}"
+home="$(getent passwd "${user}" | cut -d: -f6)"
+install -d -m 0700 -o "${user}" -g "${user}" "${home}/.ssh"
+authorized="${home}/.ssh/authorized_keys"
+touch "${authorized}"
+chmod 0600 "${authorized}"
+chown "${user}:${user}" "${authorized}"
+blob="$(awk '{print $2}' <<<"${key}")"
+line="restrict,command=\"sudo -n ${DEPLOY_DIR}/scripts/request-poweroff --source relay\" ${key}"
+grep -qF " ${blob}" "${authorized}" || printf '%s\n' "${line}" >>"${authorized}"
+cat >/etc/sudoers.d/ai-power-relay <<EOF
+${user} ALL=(root) NOPASSWD: ${DEPLOY_DIR}/scripts/request-poweroff --source relay
+EOF
+chmod 0440 /etc/sudoers.d/ai-power-relay
+visudo -cf /etc/sudoers.d/ai-power-relay >/dev/null
+printf 'Relay key authorized with a forced poweroff-request command only.\n'
+printf 'Copy this host key to the NUC installer with --host-key-file:\n'
+cat /etc/ssh/ssh_host_ed25519_key.pub

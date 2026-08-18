@@ -8,9 +8,9 @@ usage() {
 	cat <<'EOF'
 Usage: sudo scripts/poweroff-when-idle [--dry-run]
 
-Honor a runner-created shutdown request only after its delay, when no job is
-running, no inhibit file exists, and the referenced terminal metadata confirms
-the recorded state. A required failed push never creates a request.
+Honor a batch-worker or authenticated relay shutdown request only after its
+delay, when no job is running and no inhibit file exists. Batch requests also
+require terminal metadata and a successful required push.
 EOF
 }
 dry_run=false
@@ -47,22 +47,29 @@ value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 job_id = value.get("job_id")
 state = value.get("state")
 not_before = value.get("not_before_epoch")
-if not isinstance(job_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,62}", job_id):
-    raise SystemExit("invalid shutdown job ID")
-if state not in {"completed", "failed", "cancelled"} or not isinstance(not_before, int):
+source = value.get("source", "batch")
+if source not in {"batch", "relay", "manual"} or not isinstance(not_before, int):
     raise SystemExit("invalid shutdown request")
-print(job_id, state, not_before)
+if source == "batch":
+    if not isinstance(job_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,62}", job_id):
+        raise SystemExit("invalid shutdown job ID")
+    if state not in {"completed", "failed", "cancelled"}:
+        raise SystemExit("invalid shutdown state")
+else:
+    job_id, state = "-", "-"
+print(source, job_id, state, not_before)
 PY
 )"
-read -r job_id state not_before <<<"${read_request}"
+read -r request_source job_id state not_before <<<"${read_request}"
 now="$(date +%s)"
 ((now >= not_before)) || {
 	log "Shutdown deferred until epoch ${not_before}."
 	exit 0
 }
-metadata="${jobs_root}/${state}/${job_id}/metadata.json"
-[[ -f "${metadata}" ]] || die "shutdown metadata missing: ${metadata}"
-python3 - "${metadata}" "${state}" <<'PY'
+if [[ "${request_source}" == batch ]]; then
+	metadata="${jobs_root}/${state}/${job_id}/metadata.json"
+	[[ -f "${metadata}" ]] || die "shutdown metadata missing: ${metadata}"
+	python3 - "${metadata}" "${state}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -73,12 +80,16 @@ if value.get("state") != sys.argv[2] or not value.get("shutdown", {}).get("reque
 if value.get("push", {}).get("requested") and not value.get("push", {}).get("succeeded"):
     raise SystemExit("required push did not succeed")
 PY
+	request_description="batch job ${job_id}"
+else
+	request_description="${request_source} request"
+fi
 
 if "${dry_run}"; then
-	log "DRY RUN: would flush filesystems and power off for job ${job_id}."
+	log "DRY RUN: would flush filesystems and power off for ${request_description}."
 	exit 0
 fi
 rm -f -- "${request}"
 sync
-logger -t ai-appliance "Powering off after batch job ${job_id}"
+logger -t ai-appliance "Powering off after ${request_description}"
 systemctl poweroff

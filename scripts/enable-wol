@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+config="${AI_WOL_CONFIG:-/etc/ai-appliance/wol.env}"
+[[ -r "${config}" ]] || {
+	printf 'ERROR: WoL configuration missing: %s\n' "${config}" >&2
+	exit 1
+}
+# shellcheck disable=SC1090
+source "${config}"
+[[ "${AI_WOL_MAC:-}" =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]] || {
+	printf 'ERROR: invalid AI_WOL_MAC\n' >&2
+	exit 1
+}
+
+interface=""
+for address_file in /sys/class/net/*/address; do
+	if [[ "$(tr '[:upper:]' '[:lower:]' <"${address_file}")" == "${AI_WOL_MAC,,}" ]]; then
+		interface="$(basename "$(dirname "${address_file}")")"
+		break
+	fi
+done
+[[ -n "${interface}" ]] || {
+	printf 'ERROR: no network interface has configured MAC %s\n' "${AI_WOL_MAC}" >&2
+	exit 1
+}
+/usr/sbin/ethtool -s "${interface}" wol g
+/usr/sbin/ethtool "${interface}" | grep -q 'Wake-on: g'
+printf 'Wake-on-LAN enabled on %s (%s)\n' "${interface}" "${AI_WOL_MAC,,}"

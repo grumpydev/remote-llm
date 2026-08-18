@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+config="${AI_POWER_CLIENT_CONFIG:-/etc/ai-power-relay/client.env}"
+[[ -r "${config}" ]] || {
+	printf 'ERROR: client configuration unreadable: %s\n' "${config}" >&2
+	exit 1
+}
+# shellcheck disable=SC1090
+source "${config}"
+token="$(tr -d '\r\n' <"${AI_RELAY_TOKEN_FILE}")"
+auth=(-H "Authorization: Bearer ${token}")
+command="$(basename "$0")"
+case "${command}" in
+ai-wake)
+	[[ $# -eq 0 ]] || {
+		printf 'Usage: ai-wake\n' >&2
+		exit 2
+	}
+	exec curl --fail-with-body --silent --show-error "${auth[@]}" -X POST "${AI_RELAY_URL}/v1/wake"
+	;;
+ai-status)
+	probe=""
+	case "${1:-}" in "") ;; --model) probe='?probe=model' ;; *)
+		printf 'Usage: ai-status [--model]\n' >&2
+		exit 2
+		;;
+	esac
+	exec curl --fail-with-body --silent --show-error "${auth[@]}" "${AI_RELAY_URL}/v1/status${probe}"
+	;;
+ai-shutdown)
+	[[ ${1:-} == --confirm && ${2:-} == "${AI_TARGET_HOST}" && $# -eq 2 ]] || {
+		printf 'Usage: ai-shutdown --confirm %s\n' "${AI_TARGET_HOST}" >&2
+		exit 2
+	}
+	exec curl --fail-with-body --silent --show-error "${auth[@]}" -X POST "${AI_RELAY_URL}/v1/shutdown"
+	;;
+*)
+	printf 'ERROR: invoke as ai-wake, ai-status, or ai-shutdown\n' >&2
+	exit 2
+	;;
+esac

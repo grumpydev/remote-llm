@@ -15,6 +15,11 @@ Open WebUI :3000 ──────────┘
        └──────────────────────> SearXNG :8080 (internal only)
 ```
 
+Optional power control adds a separate path. An always-on LAN peer exposes an
+authenticated relay only on its Tailscale address, sends WoL locally, checks
+the AI host by MagicDNS name, and uses a pinned, forced-command SSH key to place
+a delayed request into the appliance's existing safe-poweroff gate.
+
 Docker reaches the native provider through the Linux
 `host.docker.internal:host-gateway` mapping. The deployment checks both the
 provider model list and an authenticated LiteLLM chat completion before

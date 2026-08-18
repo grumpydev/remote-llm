@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+
+usage() {
+	cat <<'EOF'
+Usage: sudo scripts/configure-wol [--interface NAME] [--mac MAC] [--check]
+
+Detect the wired default-route NIC, verify Wake-on-LAN support, record its MAC
+as appliance configuration, and persist `ethtool ... wol g` through systemd.
+EOF
+}
+interface=""
+configured_mac=""
+check_only=false
+while (($#)); do
+	case "$1" in
+	--interface)
+		shift
+		interface="${1:-}"
+		;;
+	--mac)
+		shift
+		configured_mac="${1:-}"
+		;;
+	--check) check_only=true ;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*) die "unknown argument: $1" ;;
+	esac
+	shift
+done
+require_root
+require_command ip
+require_command ethtool
+if [[ -z "${interface}" ]]; then
+	interface="$(ip -4 route show default | awk 'NR==1 {for (i=1;i<=NF;i++) if ($i=="dev") {print $(i+1); exit}}')"
+fi
+[[ "${interface}" =~ ^[A-Za-z0-9_.:-]{1,32}$ && -d "/sys/class/net/${interface}" ]] ||
+	die "could not detect a safe default-route interface"
+[[ ! -d "/sys/class/net/${interface}/wireless" ]] || die "default route uses wireless; WoL requires wired Ethernet"
+detected_mac="$(tr '[:upper:]' '[:lower:]' <"/sys/class/net/${interface}/address")"
+[[ "${detected_mac}" =~ ^([0-9a-f]{2}:){5}[0-9a-f]{2}$ ]] || die "invalid detected MAC"
+if [[ -n "${configured_mac}" && "${configured_mac,,}" != "${detected_mac}" ]]; then
+	die "configured MAC does not match ${interface}"
+fi
+ethtool "${interface}" | grep -qE 'Supports Wake-on:.*g' || die "${interface} does not advertise magic-packet WoL"
+if "${check_only}"; then
+	printf 'WoL capable: interface=%s mac=%s\n' "${interface}" "${detected_mac}"
+	exit 0
+fi
+install -d -m 0750 -g ai-appliance "${SECRETS_DIR}"
+printf 'AI_WOL_MAC=%s\n' "${detected_mac}" | atomic_write "${SECRETS_DIR}/wol.env" 0640
+chgrp ai-appliance "${SECRETS_DIR}/wol.env"
+install -m 0755 "${DEPLOY_DIR}/scripts/enable-wol" /usr/local/sbin/ai-enable-wol
+install -m 0644 "${DEPLOY_DIR}/systemd/ai-wol.service" /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable ai-wol.service
+systemctl restart ai-wol.service
+printf 'Persistent WoL configured. Use this MAC in the NUC relay: %s\n' "${detected_mac}"

@@ -104,3 +104,6 @@ Preview an eligible request:
 sudo scripts/poweroff-when-idle --dry-run
 ```
 
+Authenticated remote shutdown and batch shutdown share this gate and request
+format. See [remote power management](power-management.md) for WoL relay setup,
+status states, restricted-key authorization, and Homepage integration.

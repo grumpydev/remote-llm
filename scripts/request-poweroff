@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+
+source_name="manual"
+delay=30
+while (($#)); do
+	case "$1" in
+	--source)
+		shift
+		source_name="${1:-}"
+		;;
+	--delay)
+		shift
+		delay="${1:-}"
+		;;
+	-h | --help)
+		printf 'Usage: sudo scripts/request-poweroff [--source manual|relay] [--delay 30..3600]\n'
+		exit 0
+		;;
+	*) die "unknown argument: $1" ;;
+	esac
+	shift
+done
+require_root
+[[ "${source_name}" == manual || "${source_name}" == relay ]] || die "invalid request source"
+if [[ ! "${delay}" =~ ^[0-9]+$ ]] || ((delay < 30 || delay > 3600)); then
+	die "delay must be 30..3600"
+fi
+[[ ! -e "${SECRETS_DIR}/no-poweroff" ]] || die "poweroff is inhibited"
+jobs_root="${AI_JOBS_ROOT:-/srv/ai-jobs}"
+request="${jobs_root}/shutdown.request"
+[[ ! -e "${request}" ]] || die "a shutdown request already exists"
+install -d -m 0750 "${jobs_root}"
+python3 - "${request}" "${source_name}" "$(($(date +%s) + delay))" <<'PY'
+import json, os, sys, tempfile
+from pathlib import Path
+
+target = Path(sys.argv[1])
+fd, temporary = tempfile.mkstemp(prefix="shutdown.", dir=target.parent)
+with os.fdopen(fd, "w", encoding="utf-8") as handle:
+    json.dump({"version": 1, "source": sys.argv[2], "not_before_epoch": int(sys.argv[3])}, handle)
+    handle.write("\n")
+os.chmod(temporary, 0o600)
+os.replace(temporary, target)
+PY
+systemctl start ai-poweroff-check.service
+printf 'Safe poweroff requested by %s; earliest execution in %s seconds.\n' "${source_name}" "${delay}"

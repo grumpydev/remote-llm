@@ -7,6 +7,8 @@ RTX 3090. It keeps the existing native llama.cpp service and adds:
 - Open WebUI as the human chat interface on port 3000;
 - internal SearXNG JSON search for Open WebUI;
 - an isolated, pinned OpenCode worker and filesystem batch queue.
+- optional authenticated remote power management through an always-on WoL
+  relay on the same LAN.
 
 LiteLLM and Open WebUI bind only to loopback and the host's dynamically detected
 Tailscale IPv4. SearXNG has no host port. The batch worker has no inbound port,
@@ -124,4 +126,5 @@ make test
 ```
 
 Start with [architecture](docs/architecture.md), [operations](docs/operations.md),
-[security](docs/security.md), and [troubleshooting](docs/troubleshooting.md).
+[security](docs/security.md), [power management](docs/power-management.md), and
+[troubleshooting](docs/troubleshooting.md).

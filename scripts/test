@@ -157,12 +157,16 @@ grep -q 'ln -sfn.*ai-model' scripts/install
 grep -q 'ln -sfn.*ai-opencode' scripts/install
 grep -q -- '--user' scripts/ai-opencode
 grep -q 'SUDO_UID' scripts/ai-opencode
+grep -q 'Wake-on-LAN enabled' scripts/enable-wol
+grep -q 'restrict,command=' scripts/authorize-power-relay
+grep -q 'AI_RELAY_LISTEN_HOST' scripts/install-power-relay
+grep -q 'source.*relay' scripts/poweroff-when-idle
 
 if rg -n 'image:.*:(latest|main)([[:space:]]|$)' compose.yaml compose.worker.yaml; then
 	printf 'ERROR: moving image tag found.\n' >&2
 	exit 1
 fi
-private_identity_pattern='srdesktop''-llm|sro''bbins|Simon'' Robbins|/Users/sro''bbins'
+private_identity_pattern='srdesktop''-llm|home-''nuc|sro''bbins|Simon'' Robbins|/Users/sro''bbins'
 if rg -n -i "${private_identity_pattern}" --glob '!.git/**' .; then
 	printf 'ERROR: private build-specific identity found in the public tree.\n' >&2
 	exit 1

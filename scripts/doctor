@@ -59,6 +59,16 @@ if ! "${runtime_only}"; then
 	else
 		warn "batch dispatcher or poweroff policy is not enabled"
 	fi
+	if [[ -f "${SECRETS_DIR}/wol.env" ]]; then
+		if systemctl is-enabled ai-wol.service >/dev/null 2>&1 &&
+			systemctl is-active ai-wol.service >/dev/null 2>&1; then
+			pass "persistent Wake-on-LAN enabled"
+		else
+			fail "Wake-on-LAN configured but service inactive"
+		fi
+	else
+		warn "Wake-on-LAN not configured (run scripts/configure-wol)"
+	fi
 fi
 
 [[ -f "${DEPLOY_DIR}/.env" ]] || fail "deployment environment missing"

@@ -493,6 +493,8 @@ class Runner:
                 request.write_text(
                     json.dumps(
                         {
+                            "version": 1,
+                            "source": "batch",
                             "job_id": bundle.name,
                             "not_before_epoch": int(time.time()) + job.shutdown_delay_seconds,
                             "state": final_state,

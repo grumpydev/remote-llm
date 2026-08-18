@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 0027
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+
+usage() {
+	cat <<'EOF'
+Usage: sudo scripts/install-power-relay --target-mac MAC --target-host HOST
+       [--litellm-key-file PATH] [--host-key-file PATH] [--admin-user USER]
+       [--port PORT]
+
+Install the authenticated Wake-on-LAN relay on an always-on Ubuntu NUC. HOST
+must be the AI server's Tailscale/MagicDNS hostname. The default LAN interface,
+broadcast address, NUC Tailscale address, and administrator are detected.
+EOF
+}
+target_mac=""
+target_host=""
+litellm_key_file=""
+host_key_file=""
+admin_user="${SUDO_USER:-}"
+port=8099
+while (($#)); do
+	case "$1" in
+	--target-mac)
+		shift
+		target_mac="${1:-}"
+		;;
+	--target-host)
+		shift
+		target_host="${1:-}"
+		;;
+	--litellm-key-file)
+		shift
+		litellm_key_file="${1:-}"
+		;;
+	--host-key-file)
+		shift
+		host_key_file="${1:-}"
+		;;
+	--admin-user)
+		shift
+		admin_user="${1:-}"
+		;;
+	--port)
+		shift
+		port="${1:-}"
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*) die "unknown argument: $1" ;;
+	esac
+	shift
+done
+require_root
+for command in ip tailscale python3 openssl ssh-keygen systemctl ping curl; do require_command "${command}"; done
+target_mac="${target_mac,,}"
+[[ "${target_mac}" =~ ^([0-9a-f]{2}:){5}[0-9a-f]{2}$ ]] || die "--target-mac is required"
+[[ "${target_host}" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]] || die "--target-host is required"
+[[ "${admin_user}" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || die "unsafe administrator user"
+getent passwd "${admin_user}" >/dev/null 2>&1 || die "administrator user does not exist"
+if [[ ! "${port}" =~ ^[0-9]+$ ]] || ((port < 1024 || port > 65535)); then
+	die "invalid port"
+fi
+
+lan_interface="$(ip -4 route show default | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1);exit}}')"
+[[ -n "${lan_interface}" ]] || die "could not detect the NUC LAN interface"
+broadcast="$(ip -4 -o addr show dev "${lan_interface}" scope global | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="brd"){print $(i+1);exit}}')"
+[[ "${broadcast}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || die "could not detect LAN broadcast address"
+tailscale_ip="$(detect_tailscale_ip)"
+
+group="ai-power-relay"
+user="ai-power-relay"
+getent group "${group}" >/dev/null 2>&1 || groupadd --system "${group}"
+getent passwd "${user}" >/dev/null 2>&1 || useradd --system --home /var/lib/ai-power-relay --create-home --shell /usr/sbin/nologin -g "${group}" "${user}"
+usermod -a -G "${group}" "${admin_user}"
+install -d -m 0750 -o root -g "${group}" /etc/ai-power-relay
+install -d -m 0755 /opt/ai-power-relay/ai_appliance
+install -m 0644 "${REPO_ROOT}/ai_appliance/__init__.py" "${REPO_ROOT}/ai_appliance/power_relay.py" /opt/ai-power-relay/ai_appliance/
+install -m 0755 "${REPO_ROOT}/scripts/run-power-relay" /opt/ai-power-relay/run-power-relay
+install -m 0755 "${REPO_ROOT}/scripts/power-client" /opt/ai-power-relay/power-client
+
+token_file=/etc/ai-power-relay/token
+[[ -s "${token_file}" ]] || openssl rand -hex 32 >"${token_file}"
+litellm_target=/etc/ai-power-relay/litellm.key
+if [[ -n "${litellm_key_file}" ]]; then
+	[[ -r "${litellm_key_file}" ]] || die "--litellm-key-file is unreadable"
+	if [[ "$(readlink -f "${litellm_key_file}")" != "${litellm_target}" ]]; then
+		install -m 0640 -o root -g "${group}" "${litellm_key_file}" "${litellm_target}"
+	fi
+fi
+[[ -s "${litellm_target}" ]] || die "--litellm-key-file is required on first install"
+key_file=/etc/ai-power-relay/id_ed25519
+if [[ ! -s "${key_file}" ]]; then
+	ssh-keygen -q -t ed25519 -N '' -C 'ai-power-relay' -f "${key_file}"
+fi
+known_hosts=/etc/ai-power-relay/known_hosts
+touch "${known_hosts}"
+if [[ -n "${host_key_file}" ]]; then
+	[[ -r "${host_key_file}" ]] || die "--host-key-file is unreadable"
+	host_key="$(tr -d '\r\n' <"${host_key_file}")"
+	[[ "${host_key}" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+([[:space:]].*)?$ ]] || die "invalid server host key"
+	printf '%s %s\n' "${target_host}" "${host_key}" >"${known_hosts}"
+fi
+chown root:"${group}" "${token_file}" "${litellm_target}" "${known_hosts}"
+chmod 0640 "${token_file}" "${litellm_target}" "${known_hosts}"
+chown "${user}:${group}" "${key_file}" "${key_file}.pub"
+chmod 0600 "${key_file}"
+chmod 0644 "${key_file}.pub"
+
+cat >/etc/ai-power-relay/relay.env <<EOF
+AI_RELAY_LISTEN_HOST=${tailscale_ip}
+AI_RELAY_PORT=${port}
+AI_RELAY_TOKEN_FILE=${token_file}
+AI_TARGET_MAC=${target_mac}
+AI_TARGET_HOST=${target_host}
+AI_RELAY_BROADCAST=${broadcast}
+AI_TARGET_LITELLM_PORT=4000
+AI_TARGET_LITELLM_KEY_FILE=${litellm_target}
+AI_SHUTDOWN_SSH_USER=ai-power-relay
+AI_SHUTDOWN_SSH_KEY=${key_file}
+AI_SHUTDOWN_KNOWN_HOSTS=${known_hosts}
+EOF
+cat >/etc/ai-power-relay/client.env <<EOF
+AI_RELAY_URL=http://${tailscale_ip}:${port}
+AI_RELAY_TOKEN_FILE=${token_file}
+AI_TARGET_HOST=${target_host}
+EOF
+chown root:"${group}" /etc/ai-power-relay/relay.env /etc/ai-power-relay/client.env
+chmod 0640 /etc/ai-power-relay/relay.env /etc/ai-power-relay/client.env
+
+install -m 0644 "${REPO_ROOT}/systemd/ai-power-relay.service" /etc/systemd/system/
+for command in ai-wake ai-status ai-shutdown; do ln -sfn /opt/ai-power-relay/power-client "/usr/local/bin/${command}"; done
+set -a
+# shellcheck disable=SC1091
+source /etc/ai-power-relay/relay.env
+set +a
+PYTHONPATH=/opt/ai-power-relay python3 -m ai_appliance.power_relay --check >/dev/null
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
+	ufw status | grep -qE "${port}/tcp.*tailscale0" || ufw allow in on tailscale0 to any port "${port}" proto tcp comment 'AI power relay'
+fi
+systemctl daemon-reload
+systemctl enable ai-power-relay.service
+systemctl restart ai-power-relay.service
+curl -fsS --max-time 5 "http://${tailscale_ip}:${port}/healthz" >/dev/null ||
+	die "power relay health check failed"
+
+relay_host="${tailscale_ip}"
+token="$(tr -d '\r\n' <"${token_file}")"
+cat >/etc/ai-power-relay/homepage-services.yaml <<EOF
+- Infrastructure:
+    - AI Appliance Power:
+        icon: mdi-server
+        href: http://${relay_host}:${port}/
+        description: Authenticated Wake-on-LAN relay
+        widget:
+          type: customapi
+          url: http://${relay_host}:${port}/v1/status
+          refreshInterval: 10000
+          headers:
+            Authorization: Bearer ${token}
+          mappings:
+            - field: state
+              label: State
+            - field: checked_at
+              label: Checked
+              format: relativeDate
+EOF
+chown root:"${group}" /etc/ai-power-relay/homepage-services.yaml
+chmod 0640 /etc/ai-power-relay/homepage-services.yaml
+printf 'Power relay installed at http://%s:%s/\n' "${relay_host}" "${port}"
+printf 'Authorize this relay public key on the AI server:\n'
+cat "${key_file}.pub"
+printf 'Homepage snippet: /etc/ai-power-relay/homepage-services.yaml\n'
+printf 'Log out/in for %s group membership, then run ai-status.\n' "${group}"
