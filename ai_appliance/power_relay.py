@@ -37,6 +37,7 @@ class Config:
     ssh_user: str
     ssh_key: Path
     known_hosts: Path
+    model_ready_timeout: int = 900
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -56,6 +57,7 @@ class Config:
             ssh_user=os.environ.get("AI_SHUTDOWN_SSH_USER", "ai-power-relay"),
             ssh_key=Path(os.environ["AI_SHUTDOWN_SSH_KEY"]),
             known_hosts=Path(os.environ["AI_SHUTDOWN_KNOWN_HOSTS"]),
+            model_ready_timeout=int(os.environ.get("AI_MODEL_READY_TIMEOUT", "900")),
         )
         config.validate()
         return config
@@ -65,6 +67,8 @@ class Config:
         ipaddress.ip_address(self.broadcast)
         if not 1024 <= self.port <= 65535 or not 1 <= self.litellm_port <= 65535:
             raise ValueError("invalid port")
+        if not 1 <= self.model_ready_timeout <= 3600:
+            raise ValueError("invalid model readiness timeout")
         if len(self.token) < 32 or not MAC_RE.fullmatch(self.target_mac):
             raise ValueError("invalid token or MAC")
         if not HOST_RE.fullmatch(self.target_host) or not HOST_RE.fullmatch(self.ssh_user):
@@ -143,7 +147,9 @@ class Relay:
             },
         )
         try:
-            with urllib.request.urlopen(request, timeout=300) as response:
+            with urllib.request.urlopen(
+                request, timeout=self.config.model_ready_timeout
+            ) as response:
                 data = json.load(response)
             return bool(data.get("choices"))
         except (OSError, ValueError, urllib.error.URLError):

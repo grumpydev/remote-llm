@@ -92,6 +92,29 @@ if [[ -f "${DEPLOY_DIR}/.env" ]]; then
 	else
 		fail "LiteLLM unavailable or model absent"
 	fi
+	model_ready_timeout="${AI_MODEL_READY_TIMEOUT:-900}"
+	if [[ ! "${model_ready_timeout}" =~ ^[1-9][0-9]*$ ]] ||
+		((model_ready_timeout > 3600)); then
+		fail "AI_MODEL_READY_TIMEOUT must be an integer from 1 to 3600"
+		model_ready_timeout=900
+	fi
+	printf 'WAIT  loading the default model if needed (up to %ss)\n' \
+		"${model_ready_timeout}"
+	direct_completion=""
+	if direct_completion="$(
+		curl -fsS --max-time "${model_ready_timeout}" \
+			-H "Authorization: Bearer ${llama_key}" \
+			-H 'Content-Type: application/json' \
+			http://127.0.0.1:8080/v1/chat/completions \
+			-d '{"model":"glm-4.7-flash","messages":[{"role":"user","content":"Reply with only OK"}],"max_tokens":1,"stream":false}' \
+			2>/dev/null
+	)" && python3 -c \
+		"import json,sys; data=json.load(sys.stdin); assert data.get('choices')" \
+		<<<"${direct_completion}"; then
+		pass "llama.cpp default model ready"
+	else
+		fail "llama.cpp default model failed to load within ${model_ready_timeout}s"
+	fi
 	completion=""
 	if completion="$(
 		curl -fsS --max-time 30 \

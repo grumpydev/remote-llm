@@ -151,6 +151,8 @@ grep -q '^[[:space:]]*- DAC_READ_SEARCH$' compose.yaml
 grep -q 'BYPASS_WEB_SEARCH_WEB_LOADER: "true"' compose.yaml
 grep -q 'worker_compose --profile worker run -T --rm --no-deps' scripts/doctor
 grep -q 'LiteLLM authenticated chat completion' scripts/doctor
+grep -q 'AI_MODEL_READY_TIMEOUT:-900' scripts/doctor
+grep -q 'AI_MODEL_READY_TIMEOUT=900' scripts/install-power-relay
 grep -q -- '--models-max 1' native/run-llama-router
 grep -q 'router_help=' scripts/ai-model
 grep -q 'ln -sfn.*ai-model' scripts/install
