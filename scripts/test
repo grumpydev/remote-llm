@@ -162,6 +162,8 @@ grep -q 'SUDO_UID' scripts/ai-opencode
 grep -q 'Wake-on-LAN enabled' scripts/enable-wol
 grep -q 'restrict,command=' scripts/authorize-power-relay
 grep -q 'AI_RELAY_LISTEN_HOST' scripts/install-power-relay
+grep -q 'install -d -m 0755 -o root -g root /opt/ai-power-relay' \
+	scripts/install-power-relay
 grep -q 'for _ in {1..20}' scripts/install-power-relay
 grep -q '^ExecStart=/usr/bin/python3 -m ai_appliance.power_relay$' \
 	systemd/ai-power-relay.service

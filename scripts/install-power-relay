@@ -79,6 +79,7 @@ getent group "${group}" >/dev/null 2>&1 || groupadd --system "${group}"
 getent passwd "${user}" >/dev/null 2>&1 || useradd --system --home /var/lib/ai-power-relay --create-home --shell /usr/sbin/nologin -g "${group}" "${user}"
 usermod -a -G "${group}" "${admin_user}"
 install -d -m 0750 -o root -g "${group}" /etc/ai-power-relay
+install -d -m 0755 -o root -g root /opt/ai-power-relay
 install -d -m 0755 /opt/ai-power-relay/ai_appliance
 install -m 0644 "${REPO_ROOT}/ai_appliance/__init__.py" "${REPO_ROOT}/ai_appliance/power_relay.py" /opt/ai-power-relay/ai_appliance/
 install -m 0755 "${REPO_ROOT}/scripts/run-power-relay" /opt/ai-power-relay/run-power-relay
@@ -149,7 +150,8 @@ systemctl enable ai-power-relay.service
 systemctl restart ai-power-relay.service
 relay_ready=false
 for _ in {1..20}; do
-	if curl -fsS --max-time 2 "http://${tailscale_ip}:${port}/healthz" >/dev/null; then
+	if curl -fsS --max-time 2 "http://${tailscale_ip}:${port}/healthz" \
+		>/dev/null 2>&1; then
 		relay_ready=true
 		break
 	fi
