@@ -157,6 +157,9 @@ grep -q -- '--models-max 1' native/run-llama-router
 grep -q 'router_help=' scripts/ai-model
 grep -q 'ln -sfn.*ai-model' scripts/install
 grep -q 'ln -sfn.*ai-opencode' scripts/install
+grep -q 'ai-rotate-litellm-key' scripts/install
+grep -q 'new key validation failed; restoring the previous key' \
+	scripts/rotate-litellm-key
 grep -q -- '--user' scripts/ai-opencode
 grep -q 'SUDO_UID' scripts/ai-opencode
 grep -q 'Wake-on-LAN enabled' scripts/enable-wol

@@ -103,6 +103,8 @@ fi
 
 ln -sfn "${DEPLOY_DIR}/scripts/ai-model" /usr/local/bin/ai-model
 ln -sfn "${DEPLOY_DIR}/scripts/ai-opencode" /usr/local/bin/ai-opencode
+ln -sfn "${DEPLOY_DIR}/scripts/rotate-litellm-key" \
+	/usr/local/bin/ai-rotate-litellm-key
 if [[ -f /etc/systemd/system/llama-server.service.d/50-ai-appliance-router.conf ]]; then
 	install -m 0755 "${DEPLOY_DIR}/native/run-llama-router" \
 		/usr/local/sbin/run-ai-appliance-llama-router

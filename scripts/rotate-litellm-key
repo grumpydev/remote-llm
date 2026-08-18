@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+
+[[ ${1:-} == --key-file && -n ${2:-} && $# -eq 2 ]] ||
+	die "Usage: sudo scripts/rotate-litellm-key --key-file PATH"
+require_root
+require_command curl
+[[ -r $2 ]] || die "key file is unreadable"
+new_key="$(tr -d '\r\n' <"$2")"
+[[ "${new_key}" =~ ^sk-[A-Za-z0-9_-]{32,128}$ ]] || die "invalid LiteLLM key"
+
+env_file="${DEPLOY_DIR}/.env"
+[[ -f "${env_file}" ]] || die "deployment environment is missing"
+backup="$(mktemp)"
+cp -p "${env_file}" "${backup}"
+cleanup() { rm -f -- "${backup}"; }
+trap cleanup EXIT
+
+write_key() {
+	local key="$1"
+	local source="$2"
+	local target="$3"
+	local tmp found=false line
+	tmp="$(mktemp "${target}.XXXXXX")"
+	while IFS= read -r line || [[ -n "${line}" ]]; do
+		case "${line}" in
+		LITELLM_MASTER_KEY=*)
+			printf 'LITELLM_MASTER_KEY=%s\n' "${key}" >>"${tmp}"
+			found=true
+			;;
+		*) printf '%s\n' "${line}" >>"${tmp}" ;;
+		esac
+	done <"${source}"
+	"${found}" || printf 'LITELLM_MASTER_KEY=%s\n' "${key}" >>"${tmp}"
+	chown --reference="${target}" "${tmp}"
+	chmod --reference="${target}" "${tmp}"
+	mv -f -- "${tmp}" "${target}"
+}
+
+restart_with_current_key() {
+	compose up -d --wait --wait-timeout 300 --force-recreate litellm
+	compose up -d --wait --wait-timeout 300 --force-recreate open-webui
+}
+
+old_key="$(sed -n 's/^LITELLM_MASTER_KEY=//p' "${env_file}")"
+[[ -n "${old_key}" ]] || die "current LiteLLM key is missing"
+write_key "${new_key}" "${env_file}" "${env_file}"
+
+if ! restart_with_current_key ||
+	! curl -fsS --max-time 10 -H "Authorization: Bearer ${new_key}" \
+		http://127.0.0.1:4000/v1/models >/dev/null; then
+	printf 'ERROR: new key validation failed; restoring the previous key\n' >&2
+	cp -p "${backup}" "${env_file}"
+	restart_with_current_key || true
+	exit 1
+fi
+
+printf 'LiteLLM key rotated; LiteLLM and Open WebUI are healthy.\n'

@@ -74,21 +74,18 @@ native maintenance with `scripts/update`.
 
 ## Key rotation
 
-Edit only the relevant value in `/opt/ai-appliance/.env`, keep mode 0640 and
-group `ai-appliance`, render if the SearXNG key changed, and recreate the
-affected service:
+Generate a replacement LiteLLM key in a mode-0600 file and apply it without
+printing it:
 
 ```bash
-sudo /opt/ai-appliance/scripts/render-config
-sudo docker compose \
-  --project-directory /opt/ai-appliance \
-  --env-file /opt/ai-appliance/versions.env \
-  --env-file /opt/ai-appliance/.env up -d --force-recreate
-scripts/doctor
+sudo ai-rotate-litellm-key --key-file ./new-litellm.key
 ```
 
-Rotate client LiteLLM credentials promptly if exposed. Rotating `WEBUI_SECRET_KEY`
-may invalidate sessions. Back up before rotation.
+The command atomically updates `.env`, recreates LiteLLM and Open WebUI, and
+validates the new credential. If validation fails it restores the previous key
+and services. Update clients and the optional power relay from the same key
+file, then securely delete temporary copies. Rotating `WEBUI_SECRET_KEY` may
+invalidate sessions and still requires a reviewed manual change and backup.
 
 ## Idle shutdown
 
