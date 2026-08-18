@@ -9,7 +9,7 @@ User=ai-power-relay
 Group=ai-power-relay
 EnvironmentFile=/etc/ai-power-relay/relay.env
 Environment=PYTHONPATH=/opt/ai-power-relay
-ExecStart=/opt/ai-power-relay/run-power-relay
+ExecStart=/usr/bin/python3 -m ai_appliance.power_relay
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=yes
