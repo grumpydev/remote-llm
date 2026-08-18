@@ -80,6 +80,10 @@ sudo /opt/ai-appliance/scripts/authorize-power-relay \
   --key-file ./relay-host.pub
 ```
 
+Rerunning authorization replaces any matching unrestricted or stale entry with
+exactly one forced-command entry; it never preserves broader access for that
+relay key.
+
 Delete temporary copies of the LiteLLM key after installation. Log out and back
 in on the NUC to receive `ai-power-relay` group access.
 

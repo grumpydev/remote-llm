@@ -22,7 +22,14 @@ chmod 0600 "${authorized}"
 chown "${user}:${user}" "${authorized}"
 blob="$(awk '{print $2}' <<<"${key}")"
 line="restrict,command=\"sudo -n ${DEPLOY_DIR}/scripts/request-poweroff --source relay\" ${key}"
-grep -qF " ${blob}" "${authorized}" || printf '%s\n' "${line}" >>"${authorized}"
+temporary="$(mktemp "${authorized}.XXXXXX")"
+while IFS= read -r existing || [[ -n "${existing}" ]]; do
+	[[ " ${existing} " == *" ${blob} "* ]] || printf '%s\n' "${existing}" >>"${temporary}"
+done <"${authorized}"
+printf '%s\n' "${line}" >>"${temporary}"
+chown "${user}:${user}" "${temporary}"
+chmod 0600 "${temporary}"
+mv -f -- "${temporary}" "${authorized}"
 cat >/etc/sudoers.d/ai-power-relay <<EOF
 ${user} ALL=(root) NOPASSWD: ${DEPLOY_DIR}/scripts/request-poweroff --source relay
 EOF
