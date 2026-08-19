@@ -130,16 +130,25 @@ sudo rm /etc/ai-appliance/no-poweroff
 
 ## Homepage
 
-The NUC installer writes a ready-to-paste, secret-bearing snippet to:
+The NUC installer writes a secret-bearing snippet to:
 
 ```text
 /etc/ai-power-relay/homepage-services.yaml
 ```
 
-Merge it into Homepage's `services.yaml`. The custom API widget polls status
-with an authorization header. Clicking the service opens the relay's small web
-UI; enter the relay token once on the phone (stored in that browser's local
-storage) to reveal status and use Wake or Safe shutdown.
+Install it into a standard Homepage deployment without printing the token:
+
+```bash
+sudo scripts/install-homepage-widget
+```
+
+The installer backs up `/opt/homepage/config/services.yaml`, atomically replaces
+only its marked `AI Appliance` block, preserves all other dashboard content,
+and restarts the `homepage` container. Use `--services-file` or `--container`
+for non-standard deployments. The custom API widget polls status with an
+authorization header. Clicking the service opens the relay's small web UI;
+enter the relay token once on the phone (stored in that browser's local storage)
+to reveal status and use Wake or Safe shutdown.
 
 Retrieve the token without exposing other configuration:
 

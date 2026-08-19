@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
+
+usage() {
+	cat <<'EOF'
+Usage: sudo scripts/install-homepage-widget [--services-file PATH]
+                                             [--container NAME]
+
+Install or replace the managed AI appliance power block in Homepage without
+printing its bearer token. The existing services file is backed up first.
+EOF
+}
+
+services_file=/opt/homepage/config/services.yaml
+container=homepage
+while (($#)); do
+	case "$1" in
+	--services-file)
+		shift
+		services_file="${1:-}"
+		;;
+	--container)
+		shift
+		container="${1:-}"
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*) die "unknown argument: $1" ;;
+	esac
+	shift
+done
+
+require_root
+require_command docker
+require_command python3
+[[ "${services_file}" == /* ]] || die "--services-file must be absolute"
+[[ "${container}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]] ||
+	die "unsafe container name"
+[[ ! -L "${services_file}" ]] || die "refusing symlink services file"
+[[ -f "${services_file}" ]] || die "Homepage services file not found: ${services_file}"
+snippet=/etc/ai-power-relay/homepage-services.yaml
+[[ -r "${snippet}" ]] || die "generated Homepage snippet is unreadable"
+grep -q '^- AI Appliance:$' "${snippet}" ||
+	die "generated snippet is stale; rerun scripts/install-power-relay"
+docker inspect "${container}" >/dev/null 2>&1 || die "Homepage container not found"
+
+backup="${services_file}.ai-appliance.$(date -u +%Y%m%dT%H%M%SZ).bak"
+result="$(
+	python3 - "${services_file}" "${snippet}" "${backup}" <<'PY'
+import os
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+target = Path(sys.argv[1])
+snippet = Path(sys.argv[2]).read_text(encoding="utf-8").strip()
+backup = Path(sys.argv[3])
+begin = "# BEGIN AI APPLIANCE POWER (managed)"
+end = "# END AI APPLIANCE POWER (managed)"
+original = target.read_text(encoding="utf-8")
+
+has_begin = begin in original
+has_end = end in original
+if has_begin != has_end:
+    raise SystemExit("managed Homepage markers are incomplete; restore or remove them")
+if original.count(begin) > 1 or original.count(end) > 1:
+    raise SystemExit("multiple managed Homepage blocks found")
+
+remaining = original
+if has_begin:
+    start = original.index(begin)
+    finish = original.index(end, start) + len(end)
+    remaining = original[:start].rstrip() + "\n\n" + original[finish:].lstrip("\n")
+
+block = f"{begin}\n{snippet}\n{end}"
+updated = remaining.rstrip()
+if updated:
+    updated += "\n\n"
+updated += block + "\n"
+if updated == original:
+    print("unchanged")
+    raise SystemExit(0)
+
+shutil.copy2(target, backup)
+metadata = target.stat()
+fd, temporary_name = tempfile.mkstemp(prefix="services.", dir=target.parent)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(updated)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.chmod(temporary_name, metadata.st_mode & 0o777)
+    os.chown(temporary_name, metadata.st_uid, metadata.st_gid)
+    os.replace(temporary_name, target)
+finally:
+    if os.path.exists(temporary_name):
+        os.unlink(temporary_name)
+print("changed")
+PY
+)"
+
+if [[ "${result}" == changed ]]; then
+	docker restart "${container}" >/dev/null
+	for _ in {1..30}; do
+		if [[ "$(docker inspect -f '{{.State.Running}}' "${container}")" == true ]]; then
+			printf 'Homepage power widget installed. Backup: %s\n' "${backup}"
+			exit 0
+		fi
+		sleep 1
+	done
+	die "Homepage did not restart; backup retained at ${backup}"
+fi
+
+printf 'Homepage power widget already current; no restart needed.\n'

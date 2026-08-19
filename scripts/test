@@ -168,6 +168,9 @@ grep -q 'mktemp.*authorized' scripts/authorize-power-relay
 grep -q 'mv -f.*temporary.*authorized' scripts/authorize-power-relay
 grep -q 'tailscale serve --bg --tcp 2222 22' scripts/authorize-power-relay
 grep -q 'AI_RELAY_LISTEN_HOST' scripts/install-power-relay
+grep -q '^- AI Appliance:' scripts/install-power-relay
+grep -q 'BEGIN AI APPLIANCE POWER' scripts/install-homepage-widget
+grep -q 'refusing symlink services file' scripts/install-homepage-widget
 grep -q "write-out.*\\\\n" scripts/power-client
 grep -q 'model readiness probe active' scripts/power-client
 grep -q 'AI_SHUTDOWN_SSH_PORT=' scripts/install-power-relay

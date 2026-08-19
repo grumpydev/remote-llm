@@ -166,7 +166,7 @@ done
 relay_host="${tailscale_ip}"
 token="$(tr -d '\r\n' <"${token_file}")"
 cat >/etc/ai-power-relay/homepage-services.yaml <<EOF
-- Infrastructure:
+- AI Appliance:
     - AI Appliance Power:
         icon: mdi-server
         href: http://${relay_host}:${port}/
