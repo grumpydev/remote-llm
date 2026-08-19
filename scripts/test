@@ -172,6 +172,7 @@ grep -q '^- AI Appliance:' scripts/install-power-relay
 grep -q 'BEGIN AI APPLIANCE POWER' scripts/install-homepage-widget
 grep -q 'refusing symlink services file' scripts/install-homepage-widget
 grep -q 'Homepage to AI power relay' scripts/install-homepage-widget
+grep -q '\[\[ -n.*network' scripts/install-homepage-widget
 grep -q 'Homepage container reaches' scripts/install-homepage-widget
 grep -q "write-out.*\\\\n" scripts/power-client
 grep -q 'model readiness probe active' scripts/power-client

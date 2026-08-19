@@ -74,6 +74,7 @@ if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; the
 	)
 	((${#homepage_networks[@]})) || die "Homepage has no Docker network"
 	for network in "${homepage_networks[@]}"; do
+		[[ -n "${network}" ]] || continue
 		[[ "$(docker network inspect -f '{{.Driver}}' "${network}")" == bridge ]] || continue
 		bridge="$(docker network inspect -f \
 			'{{index .Options "com.docker.network.bridge.name"}}' "${network}")"
