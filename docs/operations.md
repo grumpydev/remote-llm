@@ -45,10 +45,11 @@ sudo scripts/update --check
 sudo scripts/update --apply
 ```
 
-Apply creates a configuration backup, installs the repository version lock,
-pulls images, recreates changed services, and validates. A failed validation
-restores the prior configuration. Review upstream release/security notes before
-changing a pin.
+Apply creates a full deployment and Open WebUI data backup, installs the
+repository version lock, pulls images, recreates changed services, and
+validates. A failed validation restores both the prior image configuration and
+the pre-migration Open WebUI database. Review upstream release/security notes
+before changing a pin.
 
 Native llama.cpp is separate. A conservative manual native update keeps the old
 binary:

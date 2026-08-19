@@ -22,9 +22,11 @@ case "$1" in
 	compose pull --dry-run 2>/dev/null || log "Docker Compose does not support pull --dry-run; compare versions.env above."
 	;;
 --apply)
-	backup="$("${SCRIPT_DIR}/backup" --config-only)"
+	# Image updates can migrate Open WebUI's database. Preserve its complete
+	# volume so rollback can restore both the old image pin and old schema.
+	backup="$("${SCRIPT_DIR}/backup")"
 	if ! "${REPO_ROOT}/scripts/install"; then
-		"${SCRIPT_DIR}/restore" "${backup}" --config-only
+		"${SCRIPT_DIR}/restore" "${backup}"
 		die "update failed; prior deployment restored"
 	fi
 	log "Update validated. Rollback backup: ${backup}"

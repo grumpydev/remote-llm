@@ -150,6 +150,11 @@ fi
 grep -q '^[[:space:]]*limiter: false$' config/searxng/settings.yml.template
 grep -q 'compose up -d --force-recreate searxng' scripts/install
 grep -q 'compose up -d --wait --wait-timeout 300 open-webui' scripts/install
+grep -q 'backup")"' scripts/update
+if grep -q -- '--config-only' scripts/update; then
+	printf 'ERROR: updates must preserve Open WebUI data for schema rollback.\n' >&2
+	exit 1
+fi
 grep -q "comment 'AI appliance to llama.cpp'" scripts/install
 grep -q -- '--fresh-open-webui' scripts/migrate
 grep -q -- "--open-webui-volume \"\${preserved_volume}\"" scripts/migrate

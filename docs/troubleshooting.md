@@ -51,15 +51,14 @@ Rerunning `sudo scripts/install` reconciles the bridge-scoped port 8080 rule.
 
 ## Web search finds URLs but reports no sources
 
-The pinned Open WebUI v0.9.5 safe async loader can discard every fetched page
-after SearXNG successfully returns results. The appliance defaults
-`BYPASS_WEB_SEARCH_WEB_LOADER=true`, which supplies SearXNG titles, URLs, and
-snippets directly instead of scraping each result page.
+The appliance defaults `BYPASS_WEB_SEARCH_WEB_LOADER=true`, which supplies
+SearXNG titles, URLs, and snippets directly instead of fetching arbitrary
+result pages. Many sites block automated clients, require JavaScript, or contain
+untrusted content, so snippet mode is the predictable and safer default.
 
 Open WebUI ConfigVars saved in its database take precedence over environment
 defaults. For an existing database, open **Admin Panel → Settings → Web Search**,
-enable **Bypass Web Loader**, and save once. A later pinned Open WebUI release
-may remove this workaround after its loader is verified.
+enable **Bypass Web Loader**, and save once.
 
 ## Open WebUI cannot see the model
 
