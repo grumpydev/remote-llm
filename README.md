@@ -93,10 +93,11 @@ sudo ai-model add \
   --context 32768
 ```
 
-The router keeps at most one model loaded at a time. Choosing another alias in
-Open WebUI or OpenCode replaces the model occupying VRAM; catalogue entries and
-cached model files remain available. `ai-model add` waits for llama.cpp's model
-download to finish before exposing the new alias.
+The router preloads the default model during boot and keeps at most one model
+loaded at a time. Choosing another alias in Open WebUI or OpenCode replaces the
+model occupying VRAM; catalogue entries and cached model files remain
+available. `ai-model add` waits for llama.cpp's model download to finish before
+exposing the new alias.
 
 Run interactive OpenCode in the current repository:
 

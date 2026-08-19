@@ -106,8 +106,28 @@ ln -sfn "${DEPLOY_DIR}/scripts/ai-opencode" /usr/local/bin/ai-opencode
 ln -sfn "${DEPLOY_DIR}/scripts/rotate-litellm-key" \
 	/usr/local/bin/ai-rotate-litellm-key
 if [[ -f /etc/systemd/system/llama-server.service.d/50-ai-appliance-router.conf ]]; then
-	install -m 0755 "${DEPLOY_DIR}/native/run-llama-router" \
-		/usr/local/sbin/run-ai-appliance-llama-router
+	router_changed=false
+	router_runner=/usr/local/sbin/run-ai-appliance-llama-router
+	if ! cmp -s "${DEPLOY_DIR}/native/run-llama-router" "${router_runner}"; then
+		install -m 0755 "${DEPLOY_DIR}/native/run-llama-router" "${router_runner}"
+		router_changed=true
+	fi
+	model_catalogue="${SECRETS_DIR}/llama-models.json"
+	model_preset=/etc/llama-server.models.ini
+	if [[ -f "${model_catalogue}" ]]; then
+		preset_candidate="$(mktemp)"
+		"${DEPLOY_DIR}/scripts/router-config" \
+			--catalogue "${model_catalogue}" \
+			--output "${preset_candidate}" render
+		if ! cmp -s "${preset_candidate}" "${model_preset}"; then
+			install -m 0640 -g llama "${preset_candidate}" "${model_preset}"
+			router_changed=true
+		fi
+		rm -f -- "${preset_candidate}"
+	fi
+	if "${router_changed}"; then
+		systemctl restart llama-server.service
+	fi
 fi
 
 env_file="${DEPLOY_DIR}/.env"

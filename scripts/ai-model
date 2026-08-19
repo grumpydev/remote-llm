@@ -19,13 +19,15 @@ Usage:
   sudo ai-model add --alias NAME --source OWNER/REPO:QUANT
                     [--display-name NAME] [--context TOKENS]
                     [--output-tokens TOKENS] [--gpu-layers N]
+                    [--parallel N]
                     [--no-flash-attention]
   sudo ai-model remove --alias NAME
   ai-model status
 
-Router mode keeps every registered model selectable while limiting llama.cpp
-to one loaded model at a time. Adding downloads the requested Hugging Face
-quantization into llama.cpp's cache before publishing the alias.
+Router mode preloads the first registered model and keeps every model selectable
+while limiting llama.cpp to one loaded model at a time. Additional models load
+on demand. Adding downloads the requested Hugging Face quantization into
+llama.cpp's cache before publishing the alias.
 EOF
 }
 

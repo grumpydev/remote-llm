@@ -3,9 +3,10 @@
 ## Native model catalogue
 
 Current llama.cpp versions support router mode: requests are routed by model
-name and models are loaded on demand. This appliance sets `--models-max 1`, so a
-24 GB GPU can retain several selectable models on disk without trying to keep
-them all in VRAM.
+name. The first catalogue entry is preloaded during boot and additional models
+are loaded on demand. This appliance sets `--models-max 1`, so a 24 GB GPU can
+retain several selectable models on disk without trying to keep them all in
+VRAM.
 
 Enable router mode once:
 
@@ -25,7 +26,8 @@ sudo ai-model add \
   --source owner/model-GGUF:Q4_K_M \
   --display-name "Qwen Coder" \
   --context 32768 \
-  --output-tokens 8192
+  --output-tokens 8192 \
+  --parallel 1
 ```
 
 The source uses llama.cpp's `OWNER/REPOSITORY:QUANT` syntax. It must be a GGUF
@@ -47,6 +49,14 @@ deletion is a separate manual storage operation.
 The stable alias is also the native router preset name. The Hugging Face source
 is stored inside that preset, so clients never need to send repository names or
 quantization tags as model identifiers.
+
+Each model defaults to one inference slot (`parallel = 1`), which avoids
+reserving resources for unused concurrent requests on a personal appliance.
+Set `--parallel N` while adding a model when concurrent inference is required.
+The first catalogue entry defaults to `load-on-startup = true`; explicitly
+setting `load_on_startup` in the JSON catalogue overrides that behaviour.
+Preloading moves the wait into the boot sequence but does not make the model
+file itself load faster. `ai-status --model` reports readiness while it loads.
 
 `ai-model add` uses llama.cpp's authenticated `POST /models` endpoint and waits
 for the download to appear in its cache before publishing the alias. Large

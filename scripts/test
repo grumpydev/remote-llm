@@ -110,6 +110,12 @@ scripts/router-config --catalogue "${router_catalogue}" \
 grep -q '^\[test-coder\]$' "${router_preset}"
 grep -q '^hf-repo = example/test-coder-GGUF:Q4_K_M$' "${router_preset}"
 grep -q '^ctx-size = 8192$' "${router_preset}"
+grep -A8 '^\[glm-4.7-flash\]$' "${router_preset}" |
+	grep -q '^parallel = 1$'
+grep -A8 '^\[glm-4.7-flash\]$' "${router_preset}" |
+	grep -q '^load-on-startup = true$'
+grep -A8 '^\[test-coder\]$' "${router_preset}" |
+	grep -q '^load-on-startup = false$'
 scripts/router-config --catalogue "${router_catalogue}" \
 	remove --alias test-coder >/dev/null
 if scripts/router-config --catalogue "${router_catalogue}" \
@@ -154,6 +160,8 @@ grep -q 'LiteLLM authenticated chat completion' scripts/doctor
 grep -q 'AI_MODEL_READY_TIMEOUT:-900' scripts/doctor
 grep -q 'AI_MODEL_READY_TIMEOUT=900' scripts/install-power-relay
 grep -q -- '--models-max 1' native/run-llama-router
+grep -q 'router_changed=false' scripts/install
+grep -q 'systemctl restart llama-server.service' scripts/install
 grep -q 'router_help=' scripts/ai-model
 grep -q 'ln -sfn.*ai-model' scripts/install
 grep -q 'ln -sfn.*ai-opencode' scripts/install

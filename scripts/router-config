@@ -30,14 +30,19 @@ def validate(model: dict[str, object]) -> None:
     context = int(model.get("context", 32768))
     output = int(model.get("output", min(context, 16384)))
     gpu_layers = int(model.get("gpu_layers", 99))
+    parallel = int(model.get("parallel", 1))
     if not 1024 <= context <= 1048576:
         raise ValueError("context outside safe range")
     if not 1 <= output <= context:
         raise ValueError("output outside safe range")
     if not 0 <= gpu_layers <= 999:
         raise ValueError("gpu layer count outside safe range")
+    if not 1 <= parallel <= 32:
+        raise ValueError("parallel slot count outside safe range")
     if not isinstance(model.get("flash_attention", True), bool):
         raise ValueError("flash_attention must be boolean")
+    if "load_on_startup" in model and not isinstance(model["load_on_startup"], bool):
+        raise ValueError("load_on_startup must be boolean")
 
 
 def load(path: Path) -> list[dict[str, object]]:
@@ -71,7 +76,7 @@ def atomic_json(path: Path, value: object) -> None:
 
 def render(models: list[dict[str, object]]) -> str:
     lines = ["version = 1", ""]
-    for model in models:
+    for index, model in enumerate(models):
         alias = str(model["alias"])
         source = str(model["source"])
         lines.extend(
@@ -81,6 +86,9 @@ def render(models: list[dict[str, object]]) -> str:
                 f"ctx-size = {int(model.get('context', 32768))}",
                 f"n-gpu-layers = {int(model.get('gpu_layers', 99))}",
                 f"flash-attn = {'on' if model.get('flash_attention', True) else 'off'}",
+                f"parallel = {int(model.get('parallel', 1))}",
+                "load-on-startup = "
+                f"{'true' if model.get('load_on_startup', index == 0) else 'false'}",
                 "",
             ]
         )
@@ -101,6 +109,7 @@ def main() -> int:
     add.add_argument("--context", type=int, default=32768)
     add.add_argument("--output-tokens", type=int, default=16384)
     add.add_argument("--gpu-layers", type=int, default=99)
+    add.add_argument("--parallel", type=int, default=1)
     add.add_argument("--no-flash-attention", action="store_true")
     remove = sub.add_parser("remove")
     remove.add_argument("--alias", required=True)
@@ -122,6 +131,8 @@ def main() -> int:
             "context": args.context,
             "output": args.output_tokens,
             "gpu_layers": args.gpu_layers,
+            "parallel": args.parallel,
+            "load_on_startup": False,
             "flash_attention": not args.no_flash_attention,
         }
         validate(new)

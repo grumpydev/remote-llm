@@ -6,6 +6,8 @@
     "context": 65536,
     "output": 16384,
     "gpu_layers": 99,
+    "parallel": 1,
+    "load_on_startup": true,
     "flash_attention": true
   }
 ]
