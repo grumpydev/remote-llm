@@ -73,6 +73,49 @@ model_is_cached() {
 			"${source}"
 }
 
+running_models() {
+	local key="$1"
+	curl -fsS --max-time 10 \
+		-H "Authorization: Bearer ${key}" \
+		"http://127.0.0.1:8080/models?reload=1" |
+		python3 -c '
+import json
+import sys
+
+active = {"downloading", "loaded", "loading", "sleeping"}
+for item in json.load(sys.stdin).get("data", []):
+    if item.get("status", {}).get("value") in active:
+        print(item["id"])
+'
+}
+
+free_router_slot() {
+	local key="$1"
+	local model=""
+	while IFS= read -r model; do
+		[[ -n "${model}" ]] || continue
+		log "Temporarily unloading ${model} to free the download slot..."
+		request_body="$(python3 -c \
+			'import json,sys; print(json.dumps({"model": sys.argv[1]}))' \
+			"${model}")"
+		curl --fail-with-body --silent --show-error --max-time 30 \
+			-H "Authorization: Bearer ${key}" \
+			-H 'Content-Type: application/json' \
+			-X POST http://127.0.0.1:8080/models/unload \
+			-d "${request_body}" >/dev/null
+	done < <(running_models "${key}")
+
+	local attempt=1
+	while ((attempt <= 60)); do
+		if [[ -z "$(running_models "${key}")" ]]; then
+			return 0
+		fi
+		sleep 1
+		attempt=$((attempt + 1))
+	done
+	die "llama.cpp did not free a model slot"
+}
+
 download_model() {
 	local key="$1"
 	local source="$2"
@@ -80,6 +123,7 @@ download_model() {
 		log "Model is already present in the llama.cpp cache: ${source}"
 		return 0
 	fi
+	free_router_slot "${key}"
 	log "Downloading ${source} into the llama.cpp cache..."
 	curl --fail-with-body --silent --show-error --max-time 30 \
 		-H "Authorization: Bearer ${key}" \
