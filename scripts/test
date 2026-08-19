@@ -176,9 +176,13 @@ grep -q 'mktemp.*authorized' scripts/authorize-power-relay
 grep -q 'mv -f.*temporary.*authorized' scripts/authorize-power-relay
 grep -q 'tailscale serve --bg --tcp 2222 22' scripts/authorize-power-relay
 grep -q 'AI_RELAY_LISTEN_HOST' scripts/install-power-relay
+grep -q 'AI_TARGET_OPEN_WEBUI_PORT=' scripts/install-power-relay
+grep -q '^- AI Appliance:$' scripts/install-power-relay
+grep -q '    - AI Chat:' scripts/install-power-relay
 grep -q 'X-AI-Relay-UI' ai_appliance/power_relay.py
 grep -q '^- AI Appliance:' scripts/install-power-relay
 grep -q 'BEGIN AI APPLIANCE POWER' scripts/install-homepage-widget
+grep -q 'chat_url=' scripts/install-homepage-widget
 grep -q 'refusing symlink services file' scripts/install-homepage-widget
 grep -q 'Homepage to AI power relay' scripts/install-homepage-widget
 grep -q '\[\[ -n.*network' scripts/install-homepage-widget

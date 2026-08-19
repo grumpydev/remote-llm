@@ -153,6 +153,11 @@ the relay's small web UI;
 enter the relay token once on the phone (stored in that browser's local storage)
 to reveal status and use Wake or Safe shutdown.
 
+The same managed group includes an **AI Chat** card linking to Open WebUI via
+the AI server's configured Tailscale/MagicDNS hostname. The default port is
+3000; pass `--open-webui-port PORT` to `install-power-relay` when the appliance
+uses a different port. The link contains no credential or fixed IP address.
+
 Retrieve the token without exposing other configuration:
 
 ```bash

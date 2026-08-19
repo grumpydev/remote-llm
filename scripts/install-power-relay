@@ -9,7 +9,7 @@ usage() {
 	cat <<'EOF'
 Usage: sudo scripts/install-power-relay --target-mac MAC --target-host HOST
        [--litellm-key-file PATH] [--host-key-file PATH] [--admin-user USER]
-       [--port PORT]
+       [--port PORT] [--open-webui-port PORT]
 
 Install the authenticated Wake-on-LAN relay on an always-on Ubuntu NUC. HOST
 must be the AI server's Tailscale/MagicDNS hostname. The default LAN interface,
@@ -22,6 +22,7 @@ litellm_key_file=""
 host_key_file=""
 admin_user="${SUDO_USER:-}"
 port=8099
+open_webui_port=3000
 shutdown_ssh_port=2222
 while (($#)); do
 	case "$1" in
@@ -49,6 +50,10 @@ while (($#)); do
 		shift
 		port="${1:-}"
 		;;
+	--open-webui-port)
+		shift
+		open_webui_port="${1:-}"
+		;;
 	-h | --help)
 		usage
 		exit 0
@@ -66,6 +71,10 @@ target_mac="${target_mac,,}"
 getent passwd "${admin_user}" >/dev/null 2>&1 || die "administrator user does not exist"
 if [[ ! "${port}" =~ ^[0-9]+$ ]] || ((port < 1024 || port > 65535)); then
 	die "invalid port"
+fi
+if [[ ! "${open_webui_port}" =~ ^[0-9]+$ ]] ||
+	((open_webui_port < 1024 || open_webui_port > 65535)); then
+	die "invalid Open WebUI port"
 fi
 
 lan_interface="$(ip -4 route show default | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1);exit}}')"
@@ -124,6 +133,7 @@ AI_TARGET_HOST=${target_host}
 AI_RELAY_BROADCAST=${broadcast}
 AI_MODEL_READY_TIMEOUT=900
 AI_TARGET_LITELLM_PORT=4000
+AI_TARGET_OPEN_WEBUI_PORT=${open_webui_port}
 AI_TARGET_LITELLM_KEY_FILE=${litellm_target}
 AI_SHUTDOWN_SSH_USER=ai-power-relay
 AI_SHUTDOWN_SSH_PORT=${shutdown_ssh_port}
@@ -134,6 +144,7 @@ cat >/etc/ai-power-relay/client.env <<EOF
 AI_RELAY_URL=http://${tailscale_ip}:${port}
 AI_RELAY_TOKEN_FILE=${token_file}
 AI_TARGET_HOST=${target_host}
+AI_TARGET_OPEN_WEBUI_PORT=${open_webui_port}
 AI_MODEL_READY_TIMEOUT=900
 EOF
 chown root:"${group}" /etc/ai-power-relay/relay.env /etc/ai-power-relay/client.env
@@ -167,6 +178,10 @@ relay_host="${tailscale_ip}"
 token="$(tr -d '\r\n' <"${token_file}")"
 cat >/etc/ai-power-relay/homepage-services.yaml <<EOF
 - AI Appliance:
+    - AI Chat:
+        icon: mdi-chat-processing
+        href: http://${target_host}:${open_webui_port}/
+        description: Open WebUI
     - AI Appliance Power:
         icon: mdi-server
         href: http://${relay_host}:${port}/

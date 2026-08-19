@@ -56,15 +56,26 @@ source "${client_config}"
 relay_authority="${AI_RELAY_URL#http://}"
 relay_host="${relay_authority%%:*}"
 relay_port="${relay_authority##*:}"
-python3 - "${relay_host}" "${relay_port}" <<'PY'
+target_host="${AI_TARGET_HOST:-}"
+open_webui_port="${AI_TARGET_OPEN_WEBUI_PORT:-3000}"
+[[ "${target_host}" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]] ||
+	die "unsafe AI target hostname"
+[[ "${open_webui_port}" =~ ^[0-9]+$ ]] || die "invalid Open WebUI port"
+python3 - "${relay_host}" "${relay_port}" "${open_webui_port}" <<'PY'
 import ipaddress
 import sys
 
 address = ipaddress.ip_address(sys.argv[1])
 port = int(sys.argv[2])
-if address not in ipaddress.ip_network("100.64.0.0/10") or not 1024 <= port <= 65535:
+webui_port = int(sys.argv[3])
+if (
+    address not in ipaddress.ip_network("100.64.0.0/10")
+    or not 1024 <= port <= 65535
+    or not 1024 <= webui_port <= 65535
+):
     raise SystemExit("unsafe relay address or port")
 PY
+chat_url="http://${target_host}:${open_webui_port}/"
 
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
 	mapfile -t homepage_networks < <(
@@ -105,7 +116,7 @@ fi
 
 backup="${services_file}.ai-appliance.$(date -u +%Y%m%dT%H%M%SZ).bak"
 result="$(
-	python3 - "${services_file}" "${snippet}" "${backup}" <<'PY'
+	python3 - "${services_file}" "${snippet}" "${backup}" "${chat_url}" <<'PY'
 import os
 import shutil
 import sys
@@ -115,9 +126,25 @@ from pathlib import Path
 target = Path(sys.argv[1])
 snippet = Path(sys.argv[2]).read_text(encoding="utf-8").strip()
 backup = Path(sys.argv[3])
+chat_url = sys.argv[4]
 begin = "# BEGIN AI APPLIANCE POWER (managed)"
 end = "# END AI APPLIANCE POWER (managed)"
 original = target.read_text(encoding="utf-8")
+
+# Upgrade snippets generated before the chat link existed. New relay installs
+# already contain this card; preserving that version also preserves any future
+# installer-owned fields beneath it.
+if "\n    - AI Chat:\n" not in snippet:
+    group, separator, services = snippet.partition("\n")
+    if group != "- AI Appliance:" or not separator:
+        raise SystemExit("generated Homepage snippet has an unexpected structure")
+    chat = "\n".join([
+        "    - AI Chat:",
+        "        icon: mdi-chat-processing",
+        f"        href: {chat_url}",
+        "        description: Open WebUI",
+    ])
+    snippet = f"{group}\n{chat}\n{services}"
 
 has_begin = begin in original
 has_end = end in original
