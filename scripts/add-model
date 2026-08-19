@@ -39,7 +39,8 @@ restore_model() {
 		"${DEPLOY_DIR}/config/litellm/models.json"
 	"${DEPLOY_DIR}/scripts/render-config" --env-file "${DEPLOY_DIR}/.env" \
 		--output "${DEPLOY_DIR}/runtime" || true
-	compose up -d --no-deps litellm || true
+	compose up -d --no-deps --force-recreate \
+		--wait --wait-timeout 300 litellm || true
 }
 trap restore_model ERR
 if ! "${DEPLOY_DIR}/scripts/model-config" \
@@ -51,7 +52,7 @@ fi
 "${DEPLOY_DIR}/scripts/render-config" --env-file "${DEPLOY_DIR}/.env" \
 	--output "${DEPLOY_DIR}/runtime"
 compose config --quiet
-compose up -d --no-deps litellm
+compose up -d --no-deps --force-recreate --wait --wait-timeout 300 litellm
 "${DEPLOY_DIR}/scripts/doctor" --runtime-only
 trap - ERR
 rm -f "${DEPLOY_DIR}/config/litellm/models.json.bak"

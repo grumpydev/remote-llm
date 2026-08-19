@@ -150,7 +150,8 @@ restart_gateway() {
 		--env-file "${DEPLOY_DIR}/.env" \
 		--output "${DEPLOY_DIR}/runtime"
 	compose config --quiet
-	compose up -d --no-deps litellm
+	compose up -d --no-deps --force-recreate \
+		--wait --wait-timeout 300 litellm
 }
 
 add_route() {

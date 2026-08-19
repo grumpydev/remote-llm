@@ -170,6 +170,8 @@ grep -q 'systemctl restart llama-server.service' scripts/install
 grep -q 'router_help=' scripts/ai-model
 grep -q 'free_router_slot' scripts/ai-model
 grep -q 'models/unload' scripts/ai-model
+grep -A7 '^restart_gateway()' scripts/ai-model |
+	grep -q -- '--force-recreate'
 grep -q 'ln -sfn.*ai-model' scripts/install
 grep -q 'ln -sfn.*ai-opencode' scripts/install
 grep -q 'ai-rotate-litellm-key' scripts/install
