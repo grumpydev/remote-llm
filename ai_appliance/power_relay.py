@@ -22,6 +22,8 @@ from urllib.parse import parse_qs, urlparse
 
 MAC_RE = re.compile(r"^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$")
+TAILNET_V4 = ipaddress.ip_network("100.64.0.0/10")
+TAILNET_V6 = ipaddress.ip_network("fd7a:115c:a1e0::/48")
 
 
 @dataclass(frozen=True)
@@ -86,6 +88,14 @@ def magic_packet(mac: str) -> bytes:
     if len(raw) != 6:
         raise ValueError("invalid MAC")
     return b"\xff" * 6 + raw * 16
+
+
+def is_tailnet_address(value: str) -> bool:
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return address in TAILNET_V4 or address in TAILNET_V6
 
 
 class Relay:
@@ -215,8 +225,8 @@ class Relay:
 
 PAGE = """<!doctype html><html><head><meta name=viewport content='width=device-width'>
 <title>AI appliance power</title><style>body{font:18px system-ui;max-width:36rem;margin:3rem auto;padding:1rem;background:#111;color:#eee}button,input{font:inherit;padding:.8rem;margin:.35rem}button{cursor:pointer}.danger{color:#fff;background:#8b1e1e}pre{white-space:pre-wrap}</style></head>
-<body><h1>AI appliance</h1><input id=t type=password placeholder='Relay token'><button onclick=save()>Save token</button><p id=s>Unknown</p><button onclick=callApi('wake')>Wake</button><button onclick=status()>Refresh</button><button class=danger onclick=shut()>Safe shutdown</button><pre id=o></pre>
-<script>const t=document.querySelector('#t'),o=document.querySelector('#o'),s=document.querySelector('#s');t.value=localStorage.aiRelayToken||'';function save(){localStorage.aiRelayToken=t.value;status()}async function req(path,method='GET'){let r=await fetch('/v1/'+path,{method,headers:{Authorization:'Bearer '+t.value}}),j=await r.json();if(!r.ok)throw Error(j.error||r.status);return j}async function status(){try{let j=await req('status');s.textContent=j.state;o.textContent=JSON.stringify(j,null,2)}catch(e){o.textContent=e}}async function callApi(x){try{o.textContent=JSON.stringify(await req(x,'POST'),null,2);setTimeout(status,1500)}catch(e){o.textContent=e}}function shut(){if(confirm('Request safe shutdown?'))callApi('shutdown')}status()</script></body></html>"""
+<body><h1>AI appliance</h1><p id=a></p><div id=tc><input id=t type=password placeholder='Relay token'><button onclick=save()>Save token</button></div><p id=s>Unknown</p><button onclick=callApi('wake')>Wake</button><button onclick=status()>Refresh</button><button class=danger onclick=shut()>Safe shutdown</button><pre id=o></pre>
+<script>const tailnet=__TAILNET_AUTH__,t=document.querySelector('#t'),tc=document.querySelector('#tc'),a=document.querySelector('#a'),o=document.querySelector('#o'),s=document.querySelector('#s');t.value=localStorage.aiRelayToken||'';if(tailnet){tc.hidden=true;a.textContent='Authenticated by Tailscale'}else{a.textContent='Token authentication required'}function save(){localStorage.aiRelayToken=t.value;status()}async function req(path,method='GET'){let h={'X-AI-Relay-UI':'same-origin'};if(t.value)h.Authorization='Bearer '+t.value;let r=await fetch('/v1/'+path,{method,headers:h}),j=await r.json();if(!r.ok)throw Error(j.error||r.status);return j}async function status(){try{let j=await req('status');s.textContent=j.state;o.textContent=JSON.stringify(j,null,2)}catch(e){o.textContent=e}}async function callApi(x){try{o.textContent=JSON.stringify(await req(x,'POST'),null,2);setTimeout(status,1500)}catch(e){o.textContent=e}}function shut(){if(confirm('Request safe shutdown?'))callApi('shutdown')}status()</script></body></html>"""
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -237,7 +247,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _authenticated(self) -> bool:
         supplied = self.headers.get("Authorization", "").removeprefix("Bearer ")
-        if hmac.compare_digest(supplied, self.relay.config.token):
+        tailnet_ui = is_tailnet_address(self.client_address[0]) and hmac.compare_digest(
+            self.headers.get("X-AI-Relay-UI", ""), "same-origin"
+        )
+        if hmac.compare_digest(supplied, self.relay.config.token) or tailnet_ui:
             return True
         self._json(HTTPStatus.UNAUTHORIZED, {"error": "unauthorized"})
         return False
@@ -245,7 +258,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         if parsed.path == "/":
-            body = PAGE.encode()
+            body = PAGE.replace(
+                "__TAILNET_AUTH__",
+                "true" if is_tailnet_address(self.client_address[0]) else "false",
+            ).encode()
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))

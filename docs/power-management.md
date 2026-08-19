@@ -163,6 +163,13 @@ Homepage has no built-in authentication layer. Keep Homepage and the relay
 behind Tailscale and/or an authenticated reverse proxy. Do not commit the
 generated snippet because it contains the relay bearer token.
 
+The relay web UI automatically recognizes direct Tailscale source addresses and
+uses that authenticated Tailnet path without asking the user to copy the bearer
+token. Same-origin UI requests carry a non-simple header so a third-party web
+page cannot trigger actions through browser CSRF. CLI, Homepage backend, and LAN
+requests continue to require the bearer token; it is never placed in the UI
+link, page source, or browser history.
+
 ## Troubleshooting
 
 ```bash

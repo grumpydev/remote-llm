@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ai_appliance.power_relay import Config, Relay, magic_packet
+from ai_appliance.power_relay import Config, Relay, is_tailnet_address, magic_packet
 
 
 class PowerRelayTests(unittest.TestCase):
@@ -14,6 +14,12 @@ class PowerRelayTests(unittest.TestCase):
         self.assertEqual(packet[:6], b"\xff" * 6)
         self.assertEqual(packet[6:12], bytes.fromhex("001122334455"))
         self.assertEqual(packet[-6:], bytes.fromhex("001122334455"))
+
+    def test_tailnet_addresses(self) -> None:
+        self.assertTrue(is_tailnet_address("100.64.0.9"))
+        self.assertTrue(is_tailnet_address("fd7a:115c:a1e0::1234"))
+        self.assertFalse(is_tailnet_address("192.0.2.10"))
+        self.assertFalse(is_tailnet_address("not-an-address"))
 
     def test_configuration_uses_files_for_secrets(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
