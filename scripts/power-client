@@ -9,7 +9,7 @@ config="${AI_POWER_CLIENT_CONFIG:-/etc/ai-power-relay/client.env}"
 # shellcheck disable=SC1090
 source "${config}"
 token="$(tr -d '\r\n' <"${AI_RELAY_TOKEN_FILE}")"
-auth=(-H "Authorization: Bearer ${token}")
+auth=(-H "Authorization: Bearer ${token}" --write-out $'\n')
 command="$(basename "$0")"
 case "${command}" in
 ai-wake)

@@ -168,6 +168,7 @@ grep -q 'mktemp.*authorized' scripts/authorize-power-relay
 grep -q 'mv -f.*temporary.*authorized' scripts/authorize-power-relay
 grep -q 'tailscale serve --bg --tcp 2222 22' scripts/authorize-power-relay
 grep -q 'AI_RELAY_LISTEN_HOST' scripts/install-power-relay
+grep -q "write-out.*\\\\n" scripts/power-client
 grep -q 'AI_SHUTDOWN_SSH_PORT=' scripts/install-power-relay
 grep -q 'install -d -m 0755 -o root -g root /opt/ai-power-relay' \
 	scripts/install-power-relay
