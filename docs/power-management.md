@@ -144,9 +144,12 @@ sudo scripts/install-homepage-widget
 
 The installer backs up `/opt/homepage/config/services.yaml`, atomically replaces
 only its marked `AI Appliance` block, preserves all other dashboard content,
-and restarts the `homepage` container. Use `--services-file` or `--container`
-for non-standard deployments. The custom API widget polls status with an
-authorization header. Clicking the service opens the relay's small web UI;
+and restarts the `homepage` container. If UFW is active, it detects Homepage's
+Docker bridge and adds a narrow bridge-subnet rule to only the relay's Tailscale
+address and TCP port, then verifies connectivity from inside the container. Use
+`--services-file` or `--container` for non-standard deployments. The custom API
+widget polls status with an authorization header. Clicking the service opens
+the relay's small web UI;
 enter the relay token once on the phone (stored in that browser's local storage)
 to reveal status and use Wake or Safe shutdown.
 

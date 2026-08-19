@@ -49,6 +49,59 @@ grep -q '^- AI Appliance:$' "${snippet}" ||
 	die "generated snippet is stale; rerun scripts/install-power-relay"
 docker inspect "${container}" >/dev/null 2>&1 || die "Homepage container not found"
 
+client_config=/etc/ai-power-relay/client.env
+[[ -r "${client_config}" ]] || die "power relay client configuration is unreadable"
+# shellcheck disable=SC1090
+source "${client_config}"
+relay_authority="${AI_RELAY_URL#http://}"
+relay_host="${relay_authority%%:*}"
+relay_port="${relay_authority##*:}"
+python3 - "${relay_host}" "${relay_port}" <<'PY'
+import ipaddress
+import sys
+
+address = ipaddress.ip_address(sys.argv[1])
+port = int(sys.argv[2])
+if address not in ipaddress.ip_network("100.64.0.0/10") or not 1024 <= port <= 65535:
+    raise SystemExit("unsafe relay address or port")
+PY
+
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
+	mapfile -t homepage_networks < <(
+		docker inspect -f \
+			'{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' \
+			"${container}"
+	)
+	((${#homepage_networks[@]})) || die "Homepage has no Docker network"
+	for network in "${homepage_networks[@]}"; do
+		[[ "$(docker network inspect -f '{{.Driver}}' "${network}")" == bridge ]] || continue
+		bridge="$(docker network inspect -f \
+			'{{index .Options "com.docker.network.bridge.name"}}' "${network}")"
+		if [[ -z "${bridge}" || "${bridge}" == '<no value>' ]]; then
+			if [[ "${network}" == bridge ]]; then
+				bridge=docker0
+			else
+				network_id="$(docker network inspect -f '{{.Id}}' "${network}")"
+				bridge="br-${network_id:0:12}"
+			fi
+		fi
+		subnet="$(docker network inspect -f \
+			'{{range .IPAM.Config}}{{if .Subnet}}{{println .Subnet}}{{end}}{{end}}' \
+			"${network}" | head -n1)"
+		[[ "${bridge}" =~ ^[A-Za-z0-9_.:-]{1,32}$ && -n "${subnet}" ]] ||
+			die "could not resolve Homepage bridge details"
+		python3 -c 'import ipaddress,sys; assert ipaddress.ip_network(sys.argv[1]).version == 4' \
+			"${subnet}"
+		if ! ufw status | grep -F "${relay_port}/tcp" |
+			grep -F "${bridge}" |
+			grep -qF 'Homepage to AI power relay'; then
+			ufw allow in on "${bridge}" from "${subnet}" to "${relay_host}" \
+				port "${relay_port}" proto tcp \
+				comment 'Homepage to AI power relay'
+		fi
+	done
+fi
+
 backup="${services_file}.ai-appliance.$(date -u +%Y%m%dT%H%M%SZ).bak"
 result="$(
 	python3 - "${services_file}" "${snippet}" "${backup}" <<'PY'
@@ -107,14 +160,30 @@ PY
 
 if [[ "${result}" == changed ]]; then
 	docker restart "${container}" >/dev/null
+	homepage_running=false
 	for _ in {1..30}; do
 		if [[ "$(docker inspect -f '{{.State.Running}}' "${container}")" == true ]]; then
-			printf 'Homepage power widget installed. Backup: %s\n' "${backup}"
-			exit 0
+			homepage_running=true
+			break
 		fi
 		sleep 1
 	done
-	die "Homepage did not restart; backup retained at ${backup}"
+	"${homepage_running}" || die "Homepage did not restart; backup retained at ${backup}"
+	printf 'Homepage power widget installed. Backup: %s\n' "${backup}"
+else
+	printf 'Homepage power widget already current; no restart needed.\n'
 fi
 
-printf 'Homepage power widget already current; no restart needed.\n'
+relay_reachable=false
+for _ in {1..15}; do
+	if docker exec "${container}" node -e \
+		'fetch(process.argv[1]).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))' \
+		"${AI_RELAY_URL}/healthz"; then
+		relay_reachable=true
+		break
+	fi
+	sleep 1
+done
+"${relay_reachable}" ||
+	die "Homepage cannot reach the relay; check its Docker bridge firewall rule"
+printf 'Homepage container reaches the authenticated power relay.\n'
