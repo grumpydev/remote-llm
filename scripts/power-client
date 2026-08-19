@@ -10,6 +10,48 @@ config="${AI_POWER_CLIENT_CONFIG:-/etc/ai-power-relay/client.env}"
 source "${config}"
 token="$(tr -d '\r\n' <"${AI_RELAY_TOKEN_FILE}")"
 auth=(-H "Authorization: Bearer ${token}" --write-out $'\n')
+
+model_probe_status() {
+	local timeout="${AI_MODEL_READY_TIMEOUT:-900}"
+	local response errors curl_pid elapsed=0 exit_status=0
+	[[ "${timeout}" =~ ^[1-9][0-9]*$ ]] || timeout=900
+	response="$(mktemp)"
+	errors="$(mktemp)"
+	cleanup_model_probe() {
+		kill "${curl_pid:-}" >/dev/null 2>&1 || true
+		wait "${curl_pid:-}" >/dev/null 2>&1 || true
+		rm -f -- "${response}" "${errors}"
+	}
+	trap cleanup_model_probe EXIT
+	trap 'exit 130' HUP INT TERM
+
+	curl --fail-with-body --silent --show-error \
+		--max-time "$((timeout + 20))" "${auth[@]}" \
+		"${AI_RELAY_URL}/v1/status?probe=model" \
+		>"${response}" 2>"${errors}" &
+	curl_pid=$!
+	if [[ -t 2 ]]; then
+		while kill -0 "${curl_pid}" >/dev/null 2>&1; do
+			printf '\rWAIT  model readiness probe active: %02d:%02d elapsed (limit %02d:%02d)' \
+				"$((elapsed / 60))" "$((elapsed % 60))" \
+				"$((timeout / 60))" "$((timeout % 60))" >&2
+			sleep 2
+			elapsed=$((elapsed + 2))
+		done
+	fi
+	if wait "${curl_pid}"; then
+		exit_status=0
+	else
+		exit_status=$?
+	fi
+	[[ ! -t 2 ]] || printf '\r\033[K' >&2
+	cat "${errors}" >&2
+	cat "${response}"
+	trap - EXIT HUP INT TERM
+	cleanup_model_probe
+	return "${exit_status}"
+}
+
 command="$(basename "$0")"
 case "${command}" in
 ai-wake)
@@ -20,13 +62,20 @@ ai-wake)
 	exec curl --fail-with-body --silent --show-error "${auth[@]}" -X POST "${AI_RELAY_URL}/v1/wake"
 	;;
 ai-status)
-	probe=""
-	case "${1:-}" in "") ;; --model) probe='?probe=model' ;; *)
+	case "${1:-}" in
+	"")
+		exec curl --fail-with-body --silent --show-error "${auth[@]}" \
+			"${AI_RELAY_URL}/v1/status"
+		;;
+	--model)
+		model_probe_status
+		exit $?
+		;;
+	*)
 		printf 'Usage: ai-status [--model]\n' >&2
 		exit 2
 		;;
 	esac
-	exec curl --fail-with-body --silent --show-error "${auth[@]}" "${AI_RELAY_URL}/v1/status${probe}"
 	;;
 ai-shutdown)
 	[[ ${1:-} == --confirm && ${2:-} == "${AI_TARGET_HOST}" && $# -eq 2 ]] || {

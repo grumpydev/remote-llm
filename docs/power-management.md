@@ -116,6 +116,9 @@ ai-shutdown --confirm ai-server
 The normal Homepage poll never loads a model into VRAM. Only the explicit
 `--model` probe does that. A large model can take several minutes to become
 ready after a cold boot, so readiness probes allow up to 900 seconds by default.
+In an interactive terminal, `ai-status --model` updates an elapsed-time status
+line while the completion request is actively triggering or waiting for that
+load; the final JSON remains clean stdout for scripts.
 
 Remote shutdown is delayed by 30 seconds and uses the existing idle gate. It
 will not power off while a batch job is running or when the inhibit file exists:

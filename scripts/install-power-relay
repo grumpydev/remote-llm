@@ -134,6 +134,7 @@ cat >/etc/ai-power-relay/client.env <<EOF
 AI_RELAY_URL=http://${tailscale_ip}:${port}
 AI_RELAY_TOKEN_FILE=${token_file}
 AI_TARGET_HOST=${target_host}
+AI_MODEL_READY_TIMEOUT=900
 EOF
 chown root:"${group}" /etc/ai-power-relay/relay.env /etc/ai-power-relay/client.env
 chmod 0640 /etc/ai-power-relay/relay.env /etc/ai-power-relay/client.env
