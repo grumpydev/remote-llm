@@ -48,6 +48,13 @@ Docker is required on the relay only when integrating a locally hosted Homepage
 dashboard. The relay does not need a GPU or a copy of the AI server's model
 files.
 
+The maintainer runs the relay on a
+[GMKtec G2 Intel N100 mini PC](https://minipc-review.com/en/gmktec-g2-mini-pc-the-most-balanced-alder-lake-n100-mini-pc-of-2025)
+that is already always on for home automation and other lightweight services.
+The separate RTX 3090 host is powered only when AI work is needed. The relay
+software is intentionally small enough to share an existing home server; a
+dedicated relay appliance is not required.
+
 ## Installed components
 
 On the AI server, `configure-wol` installs `ai-wol.service`, records the NIC by

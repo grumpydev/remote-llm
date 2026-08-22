@@ -42,6 +42,21 @@ Docker socket, host home, or broad filesystem mount. The relay binds only to its
 detected Tailscale IPv4 and holds a dedicated SSH key that is restricted on the
 AI server to requesting safe shutdown.
 
+### Maintainer's deployment
+
+In the maintainer's setup, the always-on relay is a
+[GMKtec G2 mini PC with an Intel N100](https://minipc-review.com/en/gmktec-g2-mini-pc-the-most-balanced-alder-lake-n100-mini-pc-of-2025).
+It is a small, low-power machine that already runs home-automation and other
+lightweight household services, so the relay adds very little overhead and does
+not need a dedicated computer. The much more power-hungry RTX 3090 AI server is
+normally shut down and is woken only when chat, model inference, or coding-agent
+work is needed. When work is complete, the same relay requests a policy-gated
+shutdown.
+
+This is an example rather than a hardware requirement. Any always-on Ubuntu host
+on the same LAN, with Tailscale connectivity and the ability to send a WoL magic
+packet, can fill the relay role.
+
 ## Server quick start
 
 Review [installation](docs/installation.md), then on your AI server:
