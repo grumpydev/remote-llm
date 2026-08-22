@@ -1,18 +1,46 @@
 # Self-hosted AI appliance
 
-A version-controlled, in-place deployment for an Ubuntu Server AI host with an
-NVIDIA GPU. It keeps the existing native llama.cpp service and adds:
+This repository turns an Ubuntu machine with an NVIDIA GPU and native llama.cpp
+into a private, remotely operated AI appliance. It provides browser chat, an
+OpenAI-compatible API, local and unattended coding agents, web search,
+multi-model routing, and safe remote power control. A laptop or phone reaches
+the appliance through Tailscale; no service needs to be exposed to the public
+Internet.
 
-- LiteLLM as the authenticated OpenAI-compatible gateway on port 4000;
-- Open WebUI as the human chat interface on port 3000;
-- internal SearXNG JSON search for Open WebUI;
-- an isolated, pinned OpenCode worker and filesystem batch queue;
-- optional authenticated remote power management through an always-on WoL
-  relay on the same LAN.
+## What it provides
+
+| Capability | What it is useful for |
+| --- | --- |
+| GPT-style chat | Open WebUI provides accounts, chat history, model selection, citations, and SearXNG-backed web search. |
+| OpenAI-compatible API | LiteLLM gives tools such as Aider and other API clients one authenticated endpoint for the local models. |
+| Local coding agent | `ai-opencode` runs the pinned OpenCode worker against a selected local directory without mounting the rest of the host. |
+| Unattended coding agents | A filesystem queue runs isolated coding jobs, captures reports and diffs, performs approved checks, and can push only a dedicated branch. |
+| Multiple local models | `ai-model` downloads GGUF models, keeps stable aliases, and switches the single loaded model on demand. |
+| Private remote access | Open WebUI and LiteLLM bind to loopback and the machine's detected Tailscale address. SearXNG remains internal. |
+| Remote start and stop | An always-on Ubuntu relay on the same LAN provides authenticated Wake-on-LAN, staged readiness status, and policy-gated shutdown from a phone or CLI. |
+| Operations and recovery | Pinned images, diagnostics, backups, updates, rollback, secret rotation, and migration tooling keep the deployment reproducible. |
+
+## Deployment shape
+
+The main AI server owns the GPU, native llama.cpp service, Docker application,
+model catalogue, and coding-job queue. An optional low-power relay host stays on
+the same wired LAN so it can wake the server after shutdown. Both hosts join the
+same Tailnet.
+
+```text
+Phone / laptop over Tailscale
+    ├──> Open WebUI chat :3000 ──> LiteLLM :4000 ──> llama.cpp ──> GPU
+    ├──> OpenAI-compatible clients ────────────────────┘
+    ├──> SSH / ai-opencode / queued coding jobs
+    └──> Relay UI or CLI ──> Wake-on-LAN / status / safe shutdown
+                              └──> Homepage links to chat and power
+```
 
 LiteLLM and Open WebUI bind only to loopback and the host's dynamically detected
 Tailscale IPv4. SearXNG has no host port. The batch worker has no inbound port,
-Docker socket, host home, or broad filesystem mount.
+Docker socket, host home, or broad filesystem mount. The relay binds only to its
+detected Tailscale IPv4 and holds a dedicated SSH key that is restricted on the
+AI server to requesting safe shutdown.
 
 ## Server quick start
 
@@ -39,6 +67,10 @@ Migration inventories and backs up the old stack, preserves the Open WebUI
 volume mounted at `/app/backend/data` when discoverable, stops only the replaced
 tooling containers, and never changes `llama-server.service`.
 
+To add remote start, staged status, safe shutdown, and optional Homepage cards,
+follow the complete [remote power management guide](docs/power-management.md)
+on the AI server and an always-on Ubuntu relay host.
+
 ## Endpoints
 
 | Purpose | URL | Authentication |
@@ -54,6 +86,9 @@ Retrieve the LiteLLM key without printing other secrets:
 sudo sed -n 's/^LITELLM_MASTER_KEY=//p' /opt/ai-appliance/.env
 ```
 
+Open `http://<server-hostname>:3000` from a Tailnet-connected browser for the
+ChatGPT-style interface. The same hostname on port 4000 serves API clients.
+
 For Aider:
 
 ```text
@@ -62,10 +97,29 @@ model: openai/glm-4.7-flash
 API key: the LiteLLM master key
 ```
 
-## Batch example
+## Remote power and dashboard
 
-Copy `examples/batch-job`, choose a unique ID and `agent/...` branch, add the
-exact repository URL to `/etc/ai-appliance/repositories.allow`, then:
+After completing [power management setup](docs/power-management.md), the
+always-on relay provides:
+
+```bash
+ai-wake
+ai-status
+ai-status --model
+ai-shutdown --confirm <server-hostname>
+```
+
+Status distinguishes powered off, booting, host online, LiteLLM online, and
+model ready. Shutdown is a delayed request, not an unrestricted remote shell or
+immediate power cut: running batch work and the administrator inhibit file can
+block it safely. The optional Homepage integration adds **AI Chat** and **AI
+Appliance Power** cards for phone use over Tailscale.
+
+## Remote and unattended coding jobs
+
+Connect to the AI server over Tailscale SSH, copy `examples/batch-job`, choose a
+unique ID and `agent/...` branch, add the exact repository URL to
+`/etc/ai-appliance/repositories.allow`, then:
 
 ```bash
 sudo scripts/submit-job ./my-job

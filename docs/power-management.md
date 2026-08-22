@@ -6,6 +6,14 @@ wake, status, and shutdown, and sends the magic packet on its detected default
 LAN. No LAN or Tailscale IP and no interface name is committed to this
 repository.
 
+```text
+Phone or laptop on the Tailnet
+    └──> relay host :8099
+            ├──> UDP magic packet on the local LAN ──> AI server wired NIC
+            ├──> ping / SSH / LiteLLM probes ──> staged status
+            └──> restricted SSH over Tailscale :2222 ──> safe shutdown request
+```
+
 Shutdown uses a dedicated Ed25519 key whose server-side `authorized_keys` entry
 is restricted to one forced command. It cannot open a general shell. That
 command creates the same delayed shutdown request consumed by the batch-worker
@@ -18,6 +26,48 @@ OpenSSH `authorized_keys`. Authorization therefore configures
 Tailscale Serve to forward tailnet-only TCP port 2222 to the host's standard
 OpenSSH port 22. The relay uses port 2222, where the pinned host key and forced
 command are enforced, while normal Tailscale SSH remains unchanged.
+
+## Requirements
+
+The AI server needs:
+
+- the main appliance installed and healthy;
+- wired Ethernet with firmware support for magic-packet wake from soft-off/S5;
+- Tailscale and MagicDNS connectivity;
+- a running OpenSSH server on port 22; and
+- `ethtool` for persistent NIC configuration.
+
+The relay host needs:
+
+- Ubuntu, always on and connected to the same broadcast LAN as the AI server;
+- Tailscale on the same Tailnet;
+- Python 3, OpenSSH client, `ip`, `ping`, `curl`, and `openssl`; and
+- `sudo` access for installation and service management.
+
+Docker is required on the relay only when integrating a locally hosted Homepage
+dashboard. The relay does not need a GPU or a copy of the AI server's model
+files.
+
+## Installed components
+
+On the AI server, `configure-wol` installs `ai-wol.service`, records the NIC by
+MAC rather than interface name, and reapplies `ethtool ... wol g` at every boot.
+`authorize-power-relay` creates the dedicated `ai-power-relay` SSH account, one
+forced `authorized_keys` command, a narrowly scoped sudoers entry, and the
+tailnet-only port-2222 OpenSSH forward.
+
+On the relay host, `install-power-relay` installs:
+
+- `/opt/ai-power-relay` application files;
+- root/group-readable configuration and credentials under
+  `/etc/ai-power-relay`;
+- `ai-power-relay.service`;
+- the `ai-wake`, `ai-status`, and `ai-shutdown` commands; and
+- a generated Homepage service snippet containing its backend bearer token.
+
+The repository contains all server and relay implementation files. Generated
+keys, tokens, detected addresses, interface details, and the Homepage snippet
+remain local and are excluded from Git.
 
 ## Firmware and Ethernet prerequisites
 
@@ -65,6 +115,9 @@ Clone this repository on the always-on relay host, save the LiteLLM key and
 server host public key into temporary root-readable files, then run:
 
 ```bash
+git clone <this-repository-url> ~/src/ai-appliance
+cd ~/src/ai-appliance
+
 sudo scripts/install-power-relay \
   --target-mac 00:11:22:33:44:55 \
   --target-host ai-server \
@@ -80,8 +133,14 @@ systemd relay; and adds a narrowly scoped UFW rule on `tailscale0` if UFW is
 already active. Rerunning it reconciles configuration while preserving its
 token and SSH identity.
 
+The LiteLLM key file is required only on the first install or when replacing
+the stored key. The host-key file is required initially so shutdown never falls
+back to trust-on-first-use. On later reconciliations, omit both file arguments
+to retain the installed copies.
+
 Copy the relay public key printed by the installer back to the AI server and
-authorize it:
+authorize it. It can also be read later from
+`/etc/ai-power-relay/id_ed25519.pub` on the relay host:
 
 ```bash
 sudo /opt/ai-appliance/scripts/authorize-power-relay \
@@ -94,6 +153,33 @@ relay key.
 
 Delete temporary copies of the LiteLLM key after installation. Log out and back
 in on the relay host to receive `ai-power-relay` group access.
+
+## Validate the complete path
+
+Before testing shutdown, confirm status from the relay. Use `sudo` until the
+new group membership is active:
+
+```bash
+sudo ai-status
+sudo ai-status --model
+```
+
+Then perform one attended power cycle. Replace `ai-server` with the exact value
+passed to `--target-host`:
+
+```bash
+sudo ai-shutdown --confirm ai-server
+# Wait for the idle gate and operating system to shut the server down.
+sudo ai-status
+sudo ai-wake
+# During boot, repeat this to observe the staged state transitions.
+sudo ai-status
+```
+
+After the host reaches `litellm-online`, `sudo ai-status --model` can trigger the
+configured model load and wait for `model-ready`. Test the first cycle while you
+still have physical access: a successful API response means the relay sent a
+magic packet, not that firmware accepted it.
 
 ## Commands and states
 
@@ -175,6 +261,11 @@ token. Same-origin UI requests carry a non-simple header so a third-party web
 page cannot trigger actions through browser CSRF. CLI, Homepage backend, and LAN
 requests continue to require the bearer token; it is never placed in the UI
 link, page source, or browser history.
+
+With Tailscale active on a phone, open the Homepage dashboard and use **AI
+Appliance Power** for status, wake, and safe shutdown, or **AI Chat** to open
+Open WebUI. Direct access to `http://<relay-tailscale-address>:8099/` provides
+the same power controls without Homepage.
 
 ## Troubleshooting
 
