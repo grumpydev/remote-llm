@@ -19,7 +19,7 @@ exposure.
 - Containers drop capabilities, enable `no-new-privileges`, cap resources and
   logs, and use health checks. The worker root filesystem is read-only.
 - The worker is non-root, has no inbound port, Docker socket, host root,
-  administrator home, unrelated repository, or personal SSH directory.
+  administrator home, unrelated repository, or host SSH directory.
 - Each job gets one workspace and a read-only bundle. External-directory access,
   questions, subagents, and doom loops are denied in OpenCode permissions.
 - Repository and check allow-lists, strict identifiers, no force-push, and a
@@ -28,7 +28,7 @@ exposure.
   from images/jobs, and redacted from captured output.
 - Poweroff requires runner-produced terminal metadata, successful required push,
   an empty running queue, elapsed delay, and no inhibit file.
-- The optional NUC power relay binds only to its detected Tailscale address.
+- The optional power relay binds only to its detected Tailscale address.
   CLI, Homepage backend, and non-Tailnet requests require a random bearer token;
   direct Tailnet UI requests rely on WireGuard peer authentication plus a
   same-origin-only browser header. Shutdown uses a pinned SSH host key and a
@@ -50,8 +50,8 @@ Review diffs and branches before merge. Use one repository-scoped deploy key per
 trust domain, rotate it, and do not grant administrative SSH access. Keep the
 host, Docker, and images patched through reviewed pin updates.
 
-Open WebUI search has two stages: SearXNG returns result metadata/snippets, then
-Open WebUI may retrieve page content from result URLs. Internal SearXNG does not
-make arbitrary page-content retrieval internal or trusted. Retrieved pages can
-contain prompt injection; keep SSRF protections enabled and treat cited content
-as untrusted.
+The default Open WebUI search path uses SearXNG result metadata and snippets and
+deliberately bypasses arbitrary result-page fetching. Search text can still
+contain prompt injection or misleading content, so treat results and citations
+as untrusted. Enabling the page loader expands the egress and SSRF threat model
+and should be a reviewed administrative change.

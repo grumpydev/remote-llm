@@ -38,8 +38,10 @@ evidence. Installation:
 8. starts SearXNG, LiteLLM, then Open WebUI;
 9. runs live end-to-end checks;
 10. enables the queue path unit and safe-poweroff timer;
-11. installs the `ai-model` and `ai-opencode` command links;
-12. if UFW is active, adds only Tailscale-interface rules for TCP 3000/4000.
+11. installs the `ai-model`, `ai-opencode`, and `ai-rotate-litellm-key` command
+    links;
+12. if UFW is active, permits TCP 8080 only from the appliance Docker bridge
+    and TCP 3000/4000 only on the Tailscale interface.
 
 Log out and back in after first installation so the `ai-appliance` group takes
 effect. Access to Docker still follows the server's Docker group policy.

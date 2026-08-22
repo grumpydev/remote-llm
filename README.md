@@ -1,12 +1,12 @@
-# Personal AI appliance
+# Self-hosted AI appliance
 
 A version-controlled, in-place deployment for an Ubuntu Server AI host with an
-RTX 3090. It keeps the existing native llama.cpp service and adds:
+NVIDIA GPU. It keeps the existing native llama.cpp service and adds:
 
 - LiteLLM as the authenticated OpenAI-compatible gateway on port 4000;
 - Open WebUI as the human chat interface on port 3000;
 - internal SearXNG JSON search for Open WebUI;
-- an isolated, pinned OpenCode worker and filesystem batch queue.
+- an isolated, pinned OpenCode worker and filesystem batch queue;
 - optional authenticated remote power management through an always-on WoL
   relay on the same LAN.
 
@@ -27,7 +27,8 @@ scripts/status
 scripts/doctor
 ```
 
-For the known partial `/opt/ai-agent-stack` deployment, use migration instead:
+When replacing an earlier `/opt/ai-agent-stack` deployment, use migration
+instead:
 
 ```bash
 sudo scripts/migrate --dry-run
@@ -129,3 +130,18 @@ make test
 Start with [architecture](docs/architecture.md), [operations](docs/operations.md),
 [security](docs/security.md), [power management](docs/power-management.md), and
 [troubleshooting](docs/troubleshooting.md).
+
+## Public repository checks
+
+`make test` checks shell/Python/configuration behaviour, moving container tags,
+and user-specific absolute home paths. Before publishing, maintainers can also
+provide a local, case-insensitive deny pattern without committing private names:
+
+```bash
+AI_PUBLIC_PRIVATE_PATTERN='username|private-hostname' make test
+```
+
+Generated secrets, runtime configuration, backups, Python caches, and
+`docs/build-report.md` are ignored by Git. Review `git status` and the staged
+diff before every public push; never add generated relay snippets because they
+contain a bearer token.

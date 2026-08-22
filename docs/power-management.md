@@ -1,9 +1,10 @@
 # Remote power management
 
-The always-on NUC is the only Wake-on-LAN relay. Its API listens on the NUC's
-detected Tailscale IPv4, requires a random bearer token for wake, status, and
-shutdown, and sends the magic packet on its detected default LAN. No LAN or
-Tailscale IP and no interface name is committed to this repository.
+An always-on host on the same LAN acts as the Wake-on-LAN relay. Its API listens
+on the relay host's detected Tailscale IPv4, requires a random bearer token for
+wake, status, and shutdown, and sends the magic packet on its detected default
+LAN. No LAN or Tailscale IP and no interface name is committed to this
+repository.
 
 Shutdown uses a dedicated Ed25519 key whose server-side `authorized_keys` entry
 is restricted to one forced command. It cannot open a general shell. That
@@ -47,8 +48,8 @@ sudo scripts/configure-wol --check
 systemctl status ai-wol.service
 ```
 
-Record the printed MAC for the NUC installer. Also transfer these two values to
-the NUC through a secure channel:
+Record the printed MAC for the relay installer. Also transfer these two values
+to the relay host through a secure channel:
 
 ```bash
 sudo sed -n 's/^LITELLM_MASTER_KEY=//p' /opt/ai-appliance/.env
@@ -58,7 +59,7 @@ sudo cat /etc/ssh/ssh_host_ed25519_key.pub
 The first is a secret. The SSH host key is public and lets the relay pin the AI
 server rather than trusting first use.
 
-## Install the NUC relay
+## Install the relay host
 
 Clone this repository on the always-on relay host, save the LiteLLM key and
 server host public key into temporary root-readable files, then run:
@@ -73,7 +74,7 @@ sudo scripts/install-power-relay \
 ```
 
 Use the AI server's Tailscale/MagicDNS hostname for `--target-host`. The
-installer detects the NUC's Tailscale address, default LAN interface, and
+installer detects the relay host's Tailscale address, default LAN interface, and
 broadcast address; creates a service account, token and SSH key; enables a
 systemd relay; and adds a narrowly scoped UFW rule on `tailscale0` if UFW is
 already active. Rerunning it reconciles configuration while preserving its
@@ -92,11 +93,11 @@ exactly one forced-command entry; it never preserves broader access for that
 relay key.
 
 Delete temporary copies of the LiteLLM key after installation. Log out and back
-in on the NUC to receive `ai-power-relay` group access.
+in on the relay host to receive `ai-power-relay` group access.
 
 ## Commands and states
 
-On the NUC:
+On the relay host:
 
 ```bash
 ai-wake
@@ -130,7 +131,7 @@ sudo rm /etc/ai-appliance/no-poweroff
 
 ## Homepage
 
-The NUC installer writes a secret-bearing snippet to:
+The relay installer writes a secret-bearing snippet to:
 
 ```text
 /etc/ai-power-relay/homepage-services.yaml
@@ -183,7 +184,7 @@ sudo ethtool "$(ip -4 route show default | awk '{print $5; exit}')"
 systemctl status ai-wol.service ai-poweroff-check.timer
 sudo scripts/poweroff-when-idle --dry-run
 
-# NUC
+# Relay host
 systemctl status ai-power-relay.service
 journalctl -u ai-power-relay.service -n 100 --no-pager
 curl "http://$(tailscale ip -4 | head -n1):8099/healthz"
@@ -192,5 +193,5 @@ curl "http://$(tailscale ip -4 | head -n1):8099/healthz"
 If wake works from suspend but not full poweroff, revisit S5/ErP firmware
 settings. If status remains `powered-off`, verify MagicDNS and the target
 hostname. If shutdown fails, compare the AI server's current SSH host-key
-fingerprint with the pinned NUC file and confirm the relay public key is still
+fingerprint with the pinned relay file and confirm the relay public key is still
 present in the dedicated user's `authorized_keys`.

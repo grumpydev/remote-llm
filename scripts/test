@@ -210,9 +210,15 @@ if rg -n 'image:.*:(latest|main)([[:space:]]|$)' compose.yaml compose.worker.yam
 	printf 'ERROR: moving image tag found.\n' >&2
 	exit 1
 fi
-private_identity_pattern='srdesktop''-llm|home-''nuc|sro''bbins|Simon'' Robbins|/Users/sro''bbins'
-if rg -n -i "${private_identity_pattern}" --glob '!.git/**' .; then
-	printf 'ERROR: private build-specific identity found in the public tree.\n' >&2
+mac_home_pattern='/Users/''[A-Za-z0-9._-]+/'
+linux_home_pattern='/home/''(?!node(?:/|$))[A-Za-z0-9._-]+/'
+if rg -n -P "${mac_home_pattern}|${linux_home_pattern}" --glob '!.git/**' .; then
+	printf 'ERROR: user-specific absolute home path found in the public tree.\n' >&2
+	exit 1
+fi
+if [[ -n "${AI_PUBLIC_PRIVATE_PATTERN:-}" ]] &&
+	rg -n -i "${AI_PUBLIC_PRIVATE_PATTERN}" --glob '!.git/**' .; then
+	printf 'ERROR: maintainer-supplied private identity found in the public tree.\n' >&2
 	exit 1
 fi
 git diff --check

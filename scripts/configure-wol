@@ -61,4 +61,4 @@ install -m 0644 "${DEPLOY_DIR}/systemd/ai-wol.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable ai-wol.service
 systemctl restart ai-wol.service
-printf 'Persistent WoL configured. Use this MAC in the NUC relay: %s\n' "${detected_mac}"
+printf 'Persistent WoL configured. Use this MAC in the relay installer: %s\n' "${detected_mac}"

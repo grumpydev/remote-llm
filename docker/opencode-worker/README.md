@@ -12,14 +12,14 @@ The dispatcher invokes:
 worker-entrypoint run glm-4.7-flash /job/instruction.md
 ```
 
-The installed OpenCode `1.4.11` help was inspected during the build. This pin
-uses `run --dangerously-skip-permissions --format json`; it does not accept the
-newer `--auto` spelling shown in rolling documentation. Explicit deny rules
-remain effective while approval prompts are skipped. They block
+The OpenCode version pinned by `OPENCODE_VERSION` in `versions.env` is validated
+during the image build. The pinned CLI uses
+`run --dangerously-skip-permissions --format json`; explicit deny rules remain
+effective while approval prompts are skipped. They block
 external-directory access, questions, subagents, and repeated identical tool
 calls. The custom `appliance` provider uses `@ai-sdk/openai-compatible` against
 LiteLLM.
 
 The image does not contain credentials. A repository-scoped deploy key and
 managed `known_hosts` are mounted read-only and copied into the ephemeral home
-at runtime. Never mount a personal SSH directory.
+at runtime. Never mount a host SSH directory.

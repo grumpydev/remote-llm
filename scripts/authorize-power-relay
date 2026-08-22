@@ -39,5 +39,5 @@ visudo -cf /etc/sudoers.d/ai-power-relay >/dev/null
 tailscale serve --bg --tcp 2222 22 >/dev/null
 printf 'Relay key authorized with a forced poweroff-request command only.\n'
 printf 'Standard OpenSSH exposed to the tailnet on dedicated TCP port 2222.\n'
-printf 'Copy this host key to the NUC installer with --host-key-file:\n'
+printf 'Copy this host key to the relay installer with --host-key-file:\n'
 cat /etc/ssh/ssh_host_ed25519_key.pub

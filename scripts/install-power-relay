@@ -11,9 +11,9 @@ Usage: sudo scripts/install-power-relay --target-mac MAC --target-host HOST
        [--litellm-key-file PATH] [--host-key-file PATH] [--admin-user USER]
        [--port PORT] [--open-webui-port PORT]
 
-Install the authenticated Wake-on-LAN relay on an always-on Ubuntu NUC. HOST
+Install the authenticated Wake-on-LAN relay on an always-on Ubuntu host. HOST
 must be the AI server's Tailscale/MagicDNS hostname. The default LAN interface,
-broadcast address, NUC Tailscale address, and administrator are detected.
+broadcast address, relay Tailscale address, and administrator are detected.
 EOF
 }
 target_mac=""
@@ -78,7 +78,7 @@ if [[ ! "${open_webui_port}" =~ ^[0-9]+$ ]] ||
 fi
 
 lan_interface="$(ip -4 route show default | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1);exit}}')"
-[[ -n "${lan_interface}" ]] || die "could not detect the NUC LAN interface"
+[[ -n "${lan_interface}" ]] || die "could not detect the relay LAN interface"
 broadcast="$(ip -4 -o addr show dev "${lan_interface}" scope global | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="brd"){print $(i+1);exit}}')"
 [[ "${broadcast}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || die "could not detect LAN broadcast address"
 tailscale_ip="$(detect_tailscale_ip)"

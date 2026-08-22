@@ -78,10 +78,10 @@ search:
     - json
 ```
 
-Doctor queries it from the Open WebUI container network. If JSON search works but
-page content does not, debug Open WebUI's page loader separately; search-result
-retrieval and result-page content retrieval are different network operations.
-Saved Web Search ConfigVars can override Compose values.
+Doctor queries it from the Open WebUI container network. If JSON search works
+but Open WebUI reports no sources, confirm **Bypass Web Loader** is enabled in
+its saved Web Search settings. The default deployment does not fetch result
+pages. Saved ConfigVars can override Compose values.
 
 ## Port conflict
 
@@ -93,7 +93,8 @@ sudo ss -ltnp 'sport = :4000'
 docker ps --format 'table {{.Names}}\t{{.Ports}}'
 ```
 
-Use `scripts/migrate` for the known legacy stack. Do not kill unrelated services.
+Use `scripts/migrate` only for the documented legacy container and volume
+layout. Do not kill unrelated services.
 
 ## `/opt` cannot be inspected
 
@@ -109,7 +110,7 @@ namei -l /opt/ai-appliance
 Verify the exact URL is allow-listed, the deploy key has repository scope and
 write access, and `known_hosts` contains a verified key. Review `git-prepare.log`
 and `push.log`; secrets should be redacted. The worker uses strict host-key
-checking and never falls back to a personal SSH key.
+checking and never falls back to an administrator's SSH key.
 
 ## Job remains running
 

@@ -9,7 +9,7 @@ TCP 3000. Both host ports bind to loopback and the current Tailscale IPv4.
 SearXNG has no published port and is reachable only on the Compose network.
 
 ```text
-Tailscale clients ──> LiteLLM :4000 ──> native llama.cpp :8080 ──> RTX 3090
+Tailscale clients ──> LiteLLM :4000 ──> native llama.cpp :8080 ──> NVIDIA GPU
                            ^
 Open WebUI :3000 ──────────┘
        └──────────────────────> SearXNG :8080 (internal only)

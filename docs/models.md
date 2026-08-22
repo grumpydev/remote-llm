@@ -4,9 +4,9 @@
 
 Current llama.cpp versions support router mode: requests are routed by model
 name. The first catalogue entry is preloaded during boot and additional models
-are loaded on demand. This appliance sets `--models-max 1`, so a 24 GB GPU can
-retain several selectable models on disk without trying to keep them all in
-VRAM.
+are loaded on demand. This appliance sets `--models-max 1`, so a single-GPU
+host can retain several selectable models on disk without trying to keep them
+all in VRAM.
 
 Enable router mode once:
 
@@ -51,7 +51,7 @@ is stored inside that preset, so clients never need to send repository names or
 quantization tags as model identifiers.
 
 Each model defaults to one inference slot (`parallel = 1`), which avoids
-reserving resources for unused concurrent requests on a personal appliance.
+reserving resources for unused concurrent requests on a self-hosted appliance.
 Set `--parallel N` while adding a model when concurrent inference is required.
 The first catalogue entry defaults to `load-on-startup = true`; explicitly
 setting `load_on_startup` in the JSON catalogue overrides that behaviour.
